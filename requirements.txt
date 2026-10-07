@@ -1,0 +1,14 @@
+torch
+transformers
+scikit-learn
+numpy
+scipy
+pillow
+opencv-python-headless<5
+gradio
+pytest
+soundfile
+librosa
+imageio-ffmpeg
+pandas
+joblib

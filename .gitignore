@@ -1,0 +1,9 @@
+.venv/
+data/*
+!data/MANIFEST.example.csv
+checkpoints/
+out/
+cache/
+__pycache__/
+*.log
+.pytest_cache/

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emet Lens</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#14171c;--mut:#6b7280;--line:#e5e7eb;--accent:#2563eb;
+  --ok:#16a34a;--warn:#d97706;--bad:#dc2626;--okbg:#e8f6ee;--badbg:#fdecec;--warnbg:#fff6e0}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--fg:#e8eaed;--mut:#9aa3af;--line:#2a2f38;
+  --okbg:#10281a;--badbg:#2e1515;--warnbg:#2c2410}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 64px}
+h1{margin:0 0 4px;font-size:1.6rem}
+.sub{color:var(--mut);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+#drop{border:2px dashed var(--line);text-align:center;padding:36px 16px;cursor:pointer;transition:.15s}
+#drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--card))}
+#drop b{color:var(--accent)}
+button{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:10px 20px;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.mut{color:var(--mut);font-size:.9rem}
+.verdict{border-radius:14px;padding:20px 24px;margin-bottom:16px}
+.verdict.real{background:var(--okbg)}.verdict.fake{background:var(--badbg)}.verdict.inc{background:var(--warnbg)}
+.verdict h2{margin:0 0 4px;font-size:2rem}
+.big{font-size:3rem;font-weight:800;line-height:1.1}
+.chip{display:inline-block;border-radius:999px;padding:2px 12px;font-size:.85rem;font-weight:600;color:#fff;vertical-align:middle;margin-left:8px}
+.bar{height:8px;border-radius:4px;background:var(--line);margin:6px 0 4px;overflow:hidden}
+.bar>div{height:100%}
+.sig{padding:12px 0;border-bottom:1px solid var(--line)}.sig:last-child{border:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+img.pv,video.pv{max-width:100%;max-height:320px;border-radius:10px;display:block;margin:0 auto}
+audio.pv{width:100%}
+.imgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.imgs img{width:100%;border-radius:10px}
+.spin{width:18px;height:18px;border:3px solid #fff5;border-top-color:#fff;border-radius:50%;animation:s .8s linear infinite;display:inline-block;vertical-align:-3px;margin-right:8px}
+@keyframes s{to{transform:rotate(360deg)}}
+details pre{overflow:auto;font-size:.8rem}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>Emet Lens</h1>
+  <p class="sub">Deepfake &amp; digital-forensics check for images, video and audio. Results are probabilistic evidence, not proof.</p>
+
+  <div class="card" id="drop" tabindex="0">
+    <div id="dropText">Drop a file here or <b>click to choose</b><div class="mut">Image, video or audio</div></div>
+    <input id="file" type="file" hidden>
+  </div>
+
+  <div class="card" id="pvCard" hidden>
+    <div id="preview"></div>
+    <div class="row">
+      <button id="go">Analyze</button>
+      <span class="mut" id="fname"></span>
+    </div>
+    <div class="mut" id="wait" hidden>Analyzing… video can take a minute or more on a laptop.</div>
+  </div>
+
+  <div id="err" class="verdict fake" hidden></div>
+  <div id="result" hidden></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const col = p => p < .35 ? "var(--ok)" : p < .65 ? "var(--warn)" : "var(--bad)";
+const CONF = {high:"var(--ok)", medium:"var(--warn)", low:"var(--bad)", none:"#6b7280"};
+let file = null, exts = null;
+
+fetch("/api/health").then(r => r.json()).then(h => {
+  exts = h; $("file").accept = [...h.image, ...h.video, ...h.audio].join(",");
+}).catch(() => {});
+
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+drop.onkeydown = e => (e.key === "Enter" || e.key === " ") && $("file").click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); };
+$("file").onchange = e => pick(e.target.files[0]);
+
+function pick(f) {
+  if (!f) return;
+  file = f;
+  $("err").hidden = $("result").hidden = true;
+  $("pvCard").hidden = false;
+  $("fname").textContent = `${f.name} · ${(f.size / 1048576).toFixed(1)} MB`;
+  const url = URL.createObjectURL(f), t = f.type;
+  $("preview").innerHTML = t.startsWith("image/") ? `<img class="pv" src="${url}">`
+    : t.startsWith("video/") ? `<video class="pv" src="${url}" controls></video>`
+    : t.startsWith("audio/") ? `<audio class="pv" src="${url}" controls></audio>` : "";
+}
+
+$("go").onclick = async () => {
+  if (!file) return;
+  const btn = $("go");
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Analyzing'; $("wait").hidden = false;
+  $("err").hidden = $("result").hidden = true;
+  try {
+    const fd = new FormData(); fd.append("file", file);
+    const r = await fetch("/api/analyze", {method: "POST", body: fd});
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.detail || `Server error ${r.status}`);
+    render(body);
+  } catch (e) {
+    $("err").innerHTML = `<b>Could not analyze this file.</b><div>${esc(e.message)}</div>`; $("err").hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = "Analyze"; $("wait").hidden = true;
+  }
+};
+
+function render(rep) {
+  const v = rep.verdict, a = rep.assessment || null;
+  const cls = {likely_real:"real", likely_fake:"fake", inconclusive:"inc"}[v];
+  const label = {likely_real:"REAL", likely_fake:"FAKE", inconclusive:"NO VERDICT"}[v];
+  const conf = a ? a.confidence : "none";
+  let h = `<div class="verdict ${cls}"><h2>${label}${v !== "inconclusive" ? `<span class="chip" style="background:${CONF[conf]}">${conf} confidence</span>` : ""}</h2>`;
+  if (v !== "inconclusive") h += `<div class="big">${Math.round(rep.authenticity * 100)}%</div><div class="mut">estimated authenticity (100% = certainly real)</div>`;
+  h += `<p>${esc(rep.summary)}</p>`;
+  if (rep.caveats?.length) h += `<ul class="mut">${rep.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>`;
+  h += `</div>`;
+
+  if (a) {
+    const f = a.file || {};
+    const cells = [
+      ["Detector agreement", a.detectors_used?.length ? Math.round(a.agreement * 100) + "%" : "n/a"],
+      ["Input quality", a.input_quality],
+      ["Face found", a.face_detected ? "Yes" : "No"],
+      ["Resolution", f.width ? `${f.width}×${f.height}` : "n/a"],
+      ["JPEG quality", f.jpeg_quality ? "~" + Math.round(f.jpeg_quality) : "n/a"],
+      ["Camera metadata", f.camera || "None"],
+      ["Checks used", (a.detectors_used || []).join(", ") || "none"],
+    ];
+    h += `<div class="card"><div class="grid">${cells.map(([k, x]) => `<div><div class="mut">${k}</div>${esc(x)}</div>`).join("")}</div>`;
+    if (a.detectors_skipped?.length) h += `<div class="mut" style="margin-top:10px">Skipped: ${a.detectors_skipped.map(x => `${esc(x.name)} (${esc(x.reason)})`).join("; ")}</div>`;
+    h += `</div>`;
+  }
+
+  h += `<div class="card"><b>Evidence</b>`;
+  for (const s of rep.signals) {
+    const unused = s.reliable === false, p = s.score_fake;
+    h += `<div class="sig"><b>${esc(s.name)}</b> <span class="mut">${unused ? "not used for verdict" : "fake score " + p.toFixed(2)}</span>`;
+    if (!unused) h += `<div class="bar"><div style="width:${p * 100}%;background:${col(p)}"></div></div>`;
+    h += `<div>${esc(s.finding)}</div>`;
+    if (s.time_ranges?.length) h += `<div class="mut">Suspicious at: ${s.time_ranges.map(([x, y]) => `${x.toFixed(0)}–${y.toFixed(0)}s`).join(", ")}</div>`;
+    h += `</div>`;
+  }
+  const fl = rep.flagged || {};
+  if (fl.frames?.length) h += `<div class="sig"><b>Most suspicious frames</b><div class="mut">${fl.frames.map(f => `#${f.frame} (${f.time_s}s, ${f.score_fake.toFixed(2)})`).join(", ")}</div></div>`;
+  if (fl.audio_seconds?.length) h += `<div class="sig"><b>Suspicious audio</b><div class="mut">${fl.audio_seconds.map(([x, y]) => `${x.toFixed(0)}–${y.toFixed(0)}s`).join(", ")}</div></div>`;
+  h += `</div>`;
+
+  const maps = rep.signals.filter(s => s.heatmap);
+  if (maps.length) h += `<div class="card"><b>Heatmaps</b><div class="mut">Red = regions the editing check finds most suspicious.</div><div class="imgs">${maps.map(s => `<div><img src="${s.heatmap}" alt=""><div class="mut">${esc(s.name)}</div></div>`).join("")}</div></div>`;
+
+  h += `<details class="card"><summary>Raw JSON</summary><pre>${esc(JSON.stringify(rep, null, 2))}</pre></details>`;
+  $("result").innerHTML = h; $("result").hidden = false;
+  $("result").scrollIntoView({behavior: "smooth"});
+}
+</script>
+</body>
+</html>
