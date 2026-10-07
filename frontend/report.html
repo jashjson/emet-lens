@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forensic report: Emet Lens</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%232f5bd8' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%232f5bd8'/%3E%3C/svg%3E">
+<style>
+/* A report is a paper document: always light, regardless of site theme. */
+:root{--ink:#14171c;--mut:#5b6370;--line:#dfe2e7;--acc:#2f5bd8;--ok:#17875a;--warn:#a56f08;--bad:#c62f2e;--okbg:#e7f4ee;--warnbg:#fbf1dc;--badbg:#fbe7e6;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:#e9eaee;color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+.bar{position:sticky;top:0;background:#14171c;color:#fff;display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 20px;z-index:5}
+.bar a,.bar button{color:#fff;text-decoration:none;font:inherit;background:none;border:1px solid #ffffff55;border-radius:8px;padding:6px 14px;cursor:pointer}
+.bar button.p{background:#7aa2ff;border-color:#7aa2ff;color:#0b1020;font-weight:600}
+.page{background:#fff;max-width:820px;margin:24px auto;padding:56px 60px;box-shadow:0 8px 40px rgba(0,0,0,.12)}
+@media (max-width:700px){.page{padding:28px 20px;margin:0}}
+header.rh{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:26px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:1.05rem}
+h1{font:500 2rem/1.15 var(--serif);margin:0}
+.id{font-family:var(--mono);font-size:.74rem;color:var(--mut);text-align:right}
+h2{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);margin:30px 0 10px;font-weight:600;border-bottom:1px solid var(--line);padding-bottom:6px}
+.verdict{display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:center;border-radius:10px;padding:20px 24px}
+.verdict.real{background:var(--okbg)} .verdict.fake{background:var(--badbg)} .verdict.inc{background:var(--warnbg)}
+.verdict .pct{font:500 3.2rem/1 var(--serif)} .verdict .lbl{font-weight:700;font-size:1.25rem}
+.verdict.real .lbl{color:var(--ok)} .verdict.fake .lbl{color:var(--bad)} .verdict.inc .lbl{color:var(--warn)}
+.verdict p{margin:6px 0 0;color:#3a414c}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:600}
+.kv td:first-child{width:150px;color:var(--mut)} .mono{font-family:var(--mono);font-size:.82em;word-break:break-all}
+.tag{display:inline-block;font-family:var(--mono);font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:4px;font-weight:600}
+.tag.ok{background:var(--okbg);color:var(--ok)} .tag.warn{background:var(--warnbg);color:var(--warn)} .tag.bad{background:var(--badbg);color:var(--bad)} .tag.off{background:#eef0f3;color:var(--mut)}
+.imgs{display:grid;grid-template-columns:1fr 1fr;gap:14px} .imgs figure{margin:0} .imgs img{width:100%;border:1px solid var(--line);border-radius:6px;display:block} .imgs figcaption{font-size:.78rem;color:var(--mut);margin-top:4px}
+.disc{margin-top:34px;padding:14px 16px;border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:6px;font-size:.84rem;color:#3a414c}
+.sig{margin-top:44px;display:grid;grid-template-columns:1fr 1fr;gap:40px;font-size:.8rem;color:var(--mut)} .sig div{border-top:1px solid var(--ink);padding-top:6px}
+ul{margin:6px 0;padding-left:20px}
+.empty{max-width:520px;margin:90px auto;background:#fff;padding:36px;border-radius:12px;text-align:center}
+@media print{
+  body{background:#fff} .bar{display:none} .page{box-shadow:none;margin:0;max-width:none;padding:0}
+  h2,.verdict,.imgs,tr{break-inside:avoid} @page{margin:16mm}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div class="bar"><a href="/analyze">← Back to Emet Lens</a><button class="p" onclick="print()">Print or save as PDF</button></div>
+<div id="out"></div>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const NAMES = {clip_probe:"Image content (CLIP probe)", frequency:"Frequency spectrum", ela:"Editing traces (ELA)", metadata:"File metadata", audio:"Audio authenticity", lipsync:"Lip-sync", frame_consistency:"Frame consistency"};
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const tone = p => p < .35 ? ["ok", "Authentic"] : p < .65 ? ["warn", "Uncertain"] : ["bad", "Suspicious"];
+let hist = []; try { hist = JSON.parse(localStorage.getItem("emet_lens_history_v1")) || []; } catch {}
+const id = new URLSearchParams(location.search).get("id");
+const e = hist.find(x => x.id === id);
+const out = document.getElementById("out");
+
+if (!e) {
+  out.innerHTML = `<div class="empty"><h1>Report not found</h1><p style="color:#5b6370">This report is built from your browser's analysis history, and that entry isn't available (it may have been deleted). Re-run the analysis and open the report again.</p><p><a href="/analyze">Go to Analyze</a></p></div>`;
+} else {
+  const rep = e.rep, a = rep.assessment || null, pv = rep.provenance || {}, f = a?.file || {};
+  const [cls, lbl] = {likely_real:["real", "LIKELY REAL"], likely_fake:["fake", "LIKELY FAKE"], inconclusive:["inc", "NO VERDICT"]}[rep.verdict];
+  const reportId = "EL-" + String(e.id).slice(-5);
+  const heats = rep.signals.filter(s => s.heatmap);
+  const fl = rep.flagged || {};
+  document.title = `Forensic report ${reportId}`;
+  const meta = [
+    ["File", esc(pv.filename || e.name)], ["Media type", rep.media_kind],
+    pv.bytes ? ["Size", (pv.bytes / 1024).toFixed(0) + " KB"] : null,
+    f.width ? ["Resolution", `${f.width} × ${f.height}${f.format ? " · " + f.format : ""}`] : null,
+    a ? ["JPEG quality", f.jpeg_quality ? "~" + Math.round(f.jpeg_quality) : "n/a"] : null,
+    a ? ["Camera metadata", esc(f.camera || "none")] : null,
+    ["Analyzed", pv.analyzed_at ? new Date(pv.analyzed_at).toLocaleString() : "n/a"],
+    ["Compute", `${pv.device ? pv.device.toUpperCase() : "n/a"} · ${rep.elapsed_s != null ? rep.elapsed_s + " s" : ""}`],
+    rep.ground_truth ? ["Test sample", `Held-out test image. Ground truth: ${rep.ground_truth.label}${rep.ground_truth.label === "fake" ? " (" + esc(rep.ground_truth.type) + ")" : ""}`] : null,
+  ].filter(Boolean);
+  const conf = a ? a.confidence : "none";
+  out.innerHTML = `<div class="page">
+    <header class="rh"><div><div class="logo"><svg width="22" height="22" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#2f5bd8" stroke-width="3"/><circle cx="16" cy="16" r="4" fill="#2f5bd8"/></svg>Emet Lens</div><h1 style="margin-top:12px">Forensic analysis report</h1></div>
+      <div class="id">REPORT ${reportId}<br>${new Date(pv.analyzed_at || e.t).toLocaleDateString(undefined, {dateStyle: "long"})}</div></header>
+
+    <div class="verdict ${cls}"><div class="pct">${rep.verdict === "inconclusive" ? "—" : Math.round(rep.authenticity * 100) + "%"}</div>
+      <div><div class="lbl">${lbl}${rep.verdict !== "inconclusive" ? ` · ${conf} confidence` : ""}</div><div style="color:var(--mut);font-size:.8rem">${rep.verdict === "inconclusive" ? "Not enough evidence for a verdict" : "estimated authenticity (100% = certainly real)"}</div><p>${esc(rep.summary)}</p></div></div>
+
+    <h2>Subject</h2><table class="kv">${meta.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>
+
+    <h2>Evidence</h2><table><thead><tr><th>Check</th><th>Fake score</th><th>Status</th><th>Finding</th></tr></thead><tbody>
+      ${rep.signals.map(s => { const off = s.reliable === false, [c, l] = tone(s.score_fake);
+        return `<tr><td><b>${esc(NAMES[s.name] || s.name)}</b></td><td>${off ? "—" : s.score_fake.toFixed(2)}</td><td><span class="tag ${off ? "off" : c}">${off ? "Not used" : l}</span></td><td>${esc(s.finding)}${s.time_ranges?.length ? `<br><b>Suspicious at:</b> ${s.time_ranges.map(([x, y]) => `${fmt(x)}–${fmt(y)}`).join(", ")}` : ""}</td></tr>`; }).join("")}</tbody></table>
+    ${a ? `<p style="color:var(--mut);font-size:.85rem;margin:10px 0 0">Detector agreement ${a.detectors_used.length ? Math.round(a.agreement * 100) + "%" : "n/a"} · input quality ${esc(a.input_quality)}${a.input_quality_notes?.length ? " (" + a.input_quality_notes.map(esc).join(", ") + ")" : ""} · checks used: ${a.detectors_used.map(d => esc(NAMES[d] || d)).join(", ") || "none"}${a.detectors_skipped?.length ? " · skipped: " + a.detectors_skipped.map(x => esc(x.name) + " (" + esc(x.reason) + ")").join("; ") : ""}</p>` : ""}
+
+    ${rep.lipsync ? `<h2>Lip-sync consistency</h2><table class="kv"><tr><td>Status</td><td><span class="tag ${{in_sync: "ok", out_of_sync: "bad", not_checked: "off"}[rep.lipsync.status]}">${esc(rep.lipsync.label)}</span></td></tr>${rep.lipsync.correlation != null ? `<tr><td>Mouth-speech correlation</td><td>${rep.lipsync.correlation.toFixed(2)} (genuine speech is typically above ~0.30)</td></tr><tr><td>Audio offset</td><td>${rep.lipsync.offset_ms >= 0 ? "+" : ""}${rep.lipsync.offset_ms} ms</td></tr>` : ""}<tr><td>Finding</td><td>${esc(rep.lipsync.explanation)}</td></tr>${fl.lipsync_seconds?.length ? `<tr><td>Mismatch at</td><td>${fl.lipsync_seconds.map(([x, y]) => `${fmt(x)}–${fmt(y)}`).join(", ")}</td></tr>` : ""}</table><p style="color:var(--mut);font-size:.82rem;margin:8px 0 0">Heuristic check comparing mouth-region motion with audio loudness. It adjusts the verdict only when a clear face and enough speech are present.</p>` : ""}
+
+    ${fl.frames?.length || fl.audio_seconds?.length || fl.lipsync_seconds?.length ? `<h2>Flagged moments</h2><ul>${(fl.frames || []).map(x => `<li>Frame #${x.frame} at ${fmt(x.time_s)}, fake score ${x.score_fake.toFixed(2)}</li>`).join("")}${(fl.audio_seconds || []).map(([x, y]) => `<li>Audio segment ${fmt(x)}–${fmt(y)}</li>`).join("")}${(fl.lipsync_seconds || []).map(([x, y]) => `<li>Mouth does not match speech ${fmt(x)}–${fmt(y)}</li>`).join("")}</ul>` : ""}
+
+    ${rep.media_kind === "image" || heats.length ? `<h2>Visual evidence</h2><div class="imgs">${rep.media_kind === "image" ? `<figure><img src="${rep.media_url}" alt="" onerror="this.closest('figure').remove()"><figcaption>Original submission</figcaption></figure>` : ""}${heats.map(s => `<figure><img src="${s.heatmap}" alt="" onerror="this.closest('figure').remove()"><figcaption>${esc(NAMES[s.name] || s.name)} heatmap. Red marks regions where compression error is highest. This is a lead, not proof of editing.</figcaption></figure>`).join("")}</div>` : ""}
+
+    ${rep.caveats?.length ? `<h2>Limits of this result</h2><ul>${rep.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul>` : ""}
+
+    <div class="disc"><b>How to read this report.</b> Emet Lens produces probabilistic evidence from image, video and audio statistics. It is not proof of authenticity or of manipulation, it can be wrong in both directions, and it does not identify who created a file or why. Detection accuracy depends on the training data and degrades on new generation methods and on heavily compressed files. A human reviewer should weigh this alongside provenance, source and context.</div>
+    <div class="sig"><div>Analyst</div><div>Date</div></div>
+  </div>`;
+}
+</script>
+</body>
+</html>

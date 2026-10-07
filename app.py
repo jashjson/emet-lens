@@ -44,6 +44,16 @@ def verdict_card(rep):
             f'<p>{html.escape(rep["summary"])}</p>{cav}</div>')
 
 
+def lipsync_card(rep):
+    ls = rep.get("lipsync")
+    if not ls:
+        return ""
+    col = {"in_sync": "#16a34a", "out_of_sync": "#dc2626", "not_checked": "#6b7280"}[ls["status"]]
+    detail = f' (correlation {ls["correlation"]:.2f}, offset {ls["offset_ms"]:+d} ms)' if "correlation" in ls else ""
+    return (f'<div class="card"><div class="muted">Lip-sync</div><div style="color:{col};font-weight:700;font-size:1.2rem">'
+            f'{ls["label"]}{detail}</div><div>{html.escape(ls["explanation"])}</div></div>')
+
+
 def metrics(rep):
     a = rep.get("assessment")
     if not a:
@@ -97,7 +107,7 @@ def run(path):
         traceback.print_exc()
         return f'<div class="card err"><b>Could not analyze this file.</b><div>{html.escape(type(e).__name__)}: {html.escape(str(e))}</div></div>', "", None, {}
     heat = next((s["heatmap"] for s in rep["signals"] if "heatmap" in s), None)
-    return verdict_card(rep) + metrics(rep), evidence(rep), heat, rep
+    return verdict_card(rep) + lipsync_card(rep) + metrics(rep), evidence(rep), heat, rep
 
 
 with gr.Blocks(title="Emet Lens") as demo:

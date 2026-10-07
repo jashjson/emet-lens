@@ -5,14 +5,18 @@ from PIL import Image
 _cascade = None
 
 
-def crop_face(img: Image.Image, margin=0.3, size=224):
-    """Return (face_crop, bbox or None). Falls back to center square if no face found."""
+def _get_cascade():
     global _cascade
     if _cascade is None:
         _cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    return _cascade
+
+
+def crop_face(img: Image.Image, margin=0.3, size=224):
+    """Return (face_crop, bbox or None). Falls back to center square if no face found."""
     rgb = img.convert("RGB")
     gray = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2GRAY)
-    faces = _cascade.detectMultiScale(gray, 1.1, 5, minSize=(48, 48))
+    faces = _get_cascade().detectMultiScale(gray, 1.1, 5, minSize=(48, 48))
     w, h = rgb.size
     if len(faces):
         x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])

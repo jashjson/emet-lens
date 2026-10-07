@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Methodology: Emet Lens</title>
+<meta name="description" content="How Emet Lens is trained and evaluated, with measured results on held-out data, robustness to compression, known limitations and responsible-use guidance.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%237aa2ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%237aa2ff'/%3E%3C/svg%3E">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+.toc{position:sticky;top:76px;display:flex;flex-direction:column;gap:2px;font-size:.9rem}
+.toc a{text-decoration:none;color:var(--mut);padding:6px 12px;border-left:2px solid var(--line);transition:all .15s} .toc a:hover{color:var(--fg)} .toc a.on{color:var(--accent);border-color:var(--accent)}
+.layout{display:grid;grid-template-columns:200px 1fr;gap:56px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.toc{display:none}}
+section.blk{padding:0 0 70px} section.blk h2{margin:0 0 6px}
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:22px 0}
+.nums div{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--s1)} .nums b{display:block;font-family:var(--serif);font-size:1.9rem;font-weight:500;line-height:1.1} .nums span{color:var(--mut);font-size:.82rem}
+.brow{display:grid;grid-template-columns:110px 1fr 90px;gap:14px;align-items:center;padding:7px 0;font-size:.9rem}
+.stk{display:flex;height:14px;border-radius:4px;overflow:hidden;background:var(--line)} .stk i{display:block;height:100%}
+.stk .tr{background:var(--accent)} .stk .te{background:var(--warn)}
+.leg{display:flex;gap:16px;font-size:.8rem;color:var(--mut);margin:6px 0 4px} .leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.hi{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+td.bad{color:var(--bad)} td.ok{color:var(--ok)} td.warn{color:var(--warn)}
+.lim{display:grid;gap:0}
+.lim div{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:16px 0;border-top:1px solid var(--line)} .lim i{color:var(--warn);font-style:normal;font-weight:700}
+.lim b{display:block;margin-bottom:2px} .lim span{color:var(--mut);font-size:.94rem}
+.note{color:var(--dim);font-size:.82rem;margin-top:10px}
+</style>
+</head>
+<body>
+<header id="site-nav"></header>
+
+<section class="page-head wrap">
+  <div class="crumbs"><a href="/">Home</a> / Methodology</div>
+  <h1 class="disp" style="font-size:clamp(2.2rem,5vw,3.6rem)">Methodology, results and limits</h1>
+  <p class="lead">How the engine is trained and tested, what we measured, and what the results do not show. Dataset counts and results on this page are read from the engine's manifest and evaluation output.</p>
+</section>
+
+<section class="sec" style="padding-top:36px">
+  <div class="wrap layout">
+    <nav class="toc" id="toc" aria-label="On this page"><a href="#summary">Summary</a><a href="#data">Data</a><a href="#protocol">Protocol</a><a href="#results">Results</a><a href="#robust">Robustness</a><a href="#limits">Limitations</a><a href="#ethics">Responsible use</a><a href="#repro">Reproduce</a></nav>
+    <div>
+      <section class="blk" id="summary"><h2 class="disp">Summary</h2>
+        <div id="sumBox" class="prose" style="margin-top:16px"><p>Loading…</p></div></section>
+
+      <section class="blk" id="data"><h2 class="disp">Training data</h2>
+        <div class="prose" style="margin-top:12px"><p>Small by modern standards: enough to build and test a working system, not enough to claim broad generalisation. Counts below come straight from the training manifest.</p></div>
+        <div class="nums" id="dnums"></div>
+        <div class="leg"><span><i class="tr" style="background:var(--accent)"></i>Train</span><span><i style="background:var(--warn)"></i>Test (held out)</span></div>
+        <div id="dbars"></div>
+        <p class="note" id="dnote"></p></section>
+
+      <section class="blk" id="protocol"><h2 class="disp">Test protocol</h2>
+        <div class="prose" style="margin-top:14px"><ul>
+          <li><b>Split by source, never by frame or image.</b> Each source (a person or a video) lives in exactly one of train or test. The data loader refuses a manifest where a source appears in both.</li>
+          <li><b>Seen vs. unseen fakes.</b> A fake type present in training is “seen”. A type absent from training is “unseen”. The unseen column is the one to read: it approximates a new generator.</li>
+          <li><b>False positives on real content.</b> The share of real test images wrongly flagged is a headline metric, because accusing a real photo is the costly mistake.</li>
+          <li><b>Fixed threshold, no tuning on test.</b> The judge's decision point is calibrated on training data to flag about 10% of real training images, then evaluated on the test split unchanged.</li>
+          <li><b>Robustness.</b> The same test images are re-scored after JPEG compression and downscaling, to see what survives real-world sharing.</li>
+        </ul></div></section>
+
+      <section class="blk" id="results"><h2 class="disp">Results</h2>
+        <div id="resBox" style="margin-top:18px"><p class="mut">Loading…</p></div></section>
+
+      <section class="blk" id="robust"><h2 class="disp">Robustness to compression</h2>
+        <div class="prose" style="margin-top:12px"><p>Messaging apps, social media and screenshots recompress and resize images. We re-scored every test image after each of these steps, using the same trained models.</p></div>
+        <div id="robBox" style="margin-top:18px"></div></section>
+
+      <section class="blk" id="limits"><h2 class="disp">Limitations</h2>
+        <div class="lim" style="margin-top:18px">
+          <div><i>1</i><p style="margin:0"><b>It misses many fakes by design.</b><span>The judge is tuned to rarely accuse real content, which costs recall. See the detection rate above: a “likely real” verdict is not a certificate of authenticity.</span></p></div>
+          <div><i>2</i><p style="margin:0"><b>Small, narrow training data.</b><span>A few thousand face images from a handful of generators. Real photos from other cameras, ages, lighting or demographics may behave differently, and we have not measured performance across demographic groups.</span></p></div>
+          <div><i>3</i><p style="margin:0"><b>New generators are the hard case.</b><span>Detectors trained on older generators degrade on newer ones. Only one fake type here is truly unseen, so treat unseen performance as a weak signal, not a guarantee.</span></p></div>
+          <div><i>4</i><p style="margin-top:0;margin-bottom:0"><b>Compression erodes the evidence.</b><span>The frequency cue in particular fades under JPEG and resizing, and ELA turns itself off on recompressed files.</span></p></div>
+          <div><i>5</i><p style="margin:0"><b>Metadata is easy to strip or forge.</b><span>It nudges the score slightly. C2PA content credentials are detected as present but not yet cryptographically verified.</span></p></div>
+          <div><i>6</i><p style="margin:0"><b>Faces only, and only simply.</b><span>Detection uses a Haar-cascade face finder with a centre-crop fallback, so profile, small or occluded faces may be missed. Multi-face images are not scored per face.</span></p></div>
+          <div><i>7</i><p style="margin:0"><b>Video and audio are shallower than images, and unmeasured.</b><span>Every number on this page is for still images. Video samples 16 frames with no temporal deepfake model and no blink or pulse analysis. The lip-sync check is a training-free heuristic we have not yet evaluated on labelled video. Audio needs a trained checkpoint.</span></p></div>
+          <div><i>8</i><p style="margin:0"><b>It does not say which generator, or prove intent.</b><span>The output is evidence about pixels and sound, not about who made something or why.</span></p></div>
+        </div></section>
+
+      <section class="blk" id="ethics"><h2 class="disp">Responsible use</h2>
+        <div class="prose" style="margin-top:14px"><ul>
+          <li><b>Don't use this alone to accuse anyone.</b> A probabilistic score should start a human investigation, not end one. Treat low-confidence results as unanswered.</li>
+          <li><b>Consent and privacy.</b> Analysis runs on your machine and uploads are kept in a temporary folder. Still, only examine content you have the right to examine.</li>
+          <li><b>Test fakes.</b> Only create test fakes with your own face and voice, or with licensed data.</li>
+          <li><b>Detectors go out of date.</b> A published detector can be studied and evaded, so re-run the evaluation regularly and keep an unseen-generator test.</li>
+        </ul></div></section>
+
+      <section class="blk" id="repro" style="padding-bottom:0"><h2 class="disp">Reproduce</h2>
+        <pre class="code" style="margin-top:16px">python scripts/train_image.py          <span class="mut"># train CLIP probe, frequency, judge</span>
+python -m eval.run_eval --detector judge   <span class="mut"># accuracy, AUC, FPR; seen vs. unseen</span>
+python -m frontend.eval_stats              <span class="mut"># the run behind this page</span>
+python -m frontend.server                  <span class="mut"># this website</span></pre></section>
+    </div>
+  </div>
+</section>
+
+<footer id="site-foot"></footer>
+<script src="/static/site.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const pct = (x, d = 1) => (x * 100).toFixed(d) + "%";
+const DESC = {real: "Real photographs", stylegan: "StyleGAN faces", text2img: "Text-to-image faces", insight: "Face swaps (InsightFace)", inpainting: "Inpainting edits"};
+const NM = {"judge/clean": "Judge (fused)", "clip_probe/clean": "CLIP probe alone", "frequency/clean": "Frequency alone"};
+
+Promise.all([getStatus(), fetch("/api/eval").then(r => r.json()).catch(() => ({available: false}))]).then(([st, ev]) => {
+  data(st); results(ev, st);
+});
+
+function data(st) {
+  if (!st) { $("dnums").innerHTML = '<p class="mut">Start the server from the repo root to see live dataset numbers.</p>'; return; }
+  const d = st.dataset, types = Object.entries(d.types), real = types.filter(([, v]) => v.label === "real"), fake = types.filter(([, v]) => v.label === "fake");
+  const unseen = fake.filter(([, v]) => !v.train).map(([k]) => k);
+  $("dnums").innerHTML = [[d.total, "images"], [d.sources, "distinct sources"], [d.train, "train images"], [d.test, "test images"]].map(([n, l]) => `<div><b class="num">${n.toLocaleString()}</b><span>${l}</span></div>`).join("");
+  const max = Math.max(...types.map(([, v]) => (v.train || 0) + (v.test || 0)));
+  $("dbars").innerHTML = [...real, ...fake].map(([k, v]) => { const tr = v.train || 0, te = v.test || 0;
+    return `<div class="brow"><span>${DESC[k] || k}${!tr ? ' <span class="chip warn" style="margin-left:6px">unseen</span>' : ""}</span><div class="stk" style="width:${(tr + te) / max * 100}%"><i class="tr" style="width:${tr / (tr + te) * 100}%"></i><i class="te" style="width:${te / (tr + te) * 100}%"></i></div><span class="num mut">${tr + te}</span></div>`; }).join("");
+  $("dnote").textContent = unseen.length ? `“${unseen.map(k => DESC[k] || k).join(", ")}” never appears in training, so it serves as the unseen-generator test.` : "Every fake type appears in training, so there is no unseen-generator test yet.";
+  window.__unseen = unseen;
+}
+
+function results(ev, st) {
+  if (!ev.available) {
+    $("sumBox").innerHTML = "<p>No evaluation has been run yet. Run <span class='mono'>python -m frontend.eval_stats</span>, then reload.</p>";
+    $("resBox").innerHTML = $("robBox").innerHTML = '<div class="callout warn"><b>No results yet.</b> We don\'t publish numbers we haven\'t measured.</div>'; return;
+  }
+  const R = ev.results, j = R["judge/clean"];
+  $("sumBox").innerHTML = `<p>On <b>${ev.n_test.toLocaleString()} held-out images</b> (${ev.n_test_real} real, ${ev.n_test_fake} fake), the fused judge wrongly flags <b>${pct(j.fpr_real)}</b> of real images and catches <b>${pct(j.seen.tpr_fake, 0)}</b> of fakes from generators it was trained on, and <b>${pct(j.unseen.tpr_fake, 0)}</b> of fakes from one it was not.</p>
+    <p>That is a deliberately conservative engine: it is tuned to avoid accusing real content, and it pays for that with misses. Use it as a second opinion, and read “likely real” as “nothing found”, not “proven authentic”.</p>`;
+
+  const row = (k, hi) => { const r = R[k]; if (!r) return ""; const u = r.unseen, s = r.seen;
+    return `<tr class="${hi ? "hi" : ""}"><td><b>${NM[k] || k}</b></td><td class="r ${r.fpr_real > .2 ? "bad" : r.fpr_real > .1 ? "warn" : "ok"}">${pct(r.fpr_real)}</td><td class="r">${pct(s.tpr_fake, 0)}</td><td class="r">${s.auc.toFixed(2)}</td><td class="r">${u.tpr_fake != null ? pct(u.tpr_fake, 0) : "n/a"}</td><td class="r">${u.auc != null ? u.auc.toFixed(2) : "n/a"}</td></tr>`; };
+  const byType = Object.entries(j.by_type).map(([t, v]) => { const un = (window.__unseen || []).includes(t);
+    return `<div class="brow"><span>${DESC[t] || t}${un ? ' <span class="chip warn" style="margin-left:6px">unseen</span>' : ""}</span><div class="meter"><i style="width:${v * 100}%;background:${v > .6 ? "var(--ok)" : v > .4 ? "var(--warn)" : "var(--bad)"}"></i></div><span class="num">${pct(v, 0)}</span></div>`; }).join("");
+
+  $("resBox").innerHTML = `<div class="tbl"><table><thead><tr><th>Detector</th><th class="r">Real flagged (FPR)</th><th class="r">Fakes caught · seen</th><th class="r">AUC · seen</th><th class="r">Fakes caught · unseen</th><th class="r">AUC · unseen</th></tr></thead><tbody>
+    ${row("judge/clean", true)}${row("clip_probe/clean")}${row("frequency/clean")}</tbody></table></div>
+    <p class="note">Test split, threshold 0.5, clean images. Seen: n=${j.seen.n_fake} fakes. Unseen: n=${j.unseen.n_fake}. Real: n=${j.n_real}. Run ${ev.generated_at}. AUC is the chance a random fake scores higher than a random real image (0.5 = guessing, 1.0 = perfect).</p>
+    <h3 style="margin:34px 0 4px;font-size:1.1rem">Fakes caught, by generator (fused judge)</h3><div style="margin-top:8px">${byType}</div>
+    <div class="callout" style="margin-top:26px"><b>Reading this table.</b> The frequency detector alone is weak (it flags many real images) and the CLIP probe does most of the work. The judge gives up some recall for a much lower false-positive rate, which is what it is tuned for. Performance on the one unseen generator is lower than on the seen ones.</div>`;
+
+  const keys = [["judge/clean", "Original"], ["judge/jpeg75", "JPEG quality 75"], ["judge/jpeg50", "JPEG quality 50"], ["judge/down0.5", "Downscaled 50%"]].filter(([k]) => R[k]);
+  const base = R["judge/clean"], worst = Math.max(...keys.map(([k]) => R[k].fpr_real));
+  $("robBox").innerHTML = `<div class="tbl"><table><thead><tr><th>Condition (fused judge)</th><th class="r">Real flagged (FPR)</th><th class="r">Fakes caught · seen</th><th class="r">AUC · seen</th><th class="r">AUC · unseen</th></tr></thead><tbody>${keys.map(([k, l]) => { const r = R[k];
+    return `<tr><td><b>${l}</b></td><td class="r ${r.fpr_real > base.fpr_real + .02 ? "bad" : ""}">${pct(r.fpr_real)}</td><td class="r">${pct(r.seen.tpr_fake, 0)}</td><td class="r">${r.seen.auc.toFixed(2)}</td><td class="r">${r.unseen.auc != null ? r.unseen.auc.toFixed(2) : "n/a"}</td></tr>`; }).join("")}</tbody></table></div>
+    <div class="callout warn" style="margin-top:22px"><b>What to take from this.</b> ${worst > base.fpr_real + .02 ? `Recompression and resizing raise the false-positive rate (${pct(base.fpr_real)} on originals vs. ${pct(worst)} at worst here). A shared or screenshotted copy of a real photo is more likely to be flagged than the original, so ` : "False-positive rate stays close to the original under these steps, but "}confidence is discounted for compressed inputs, and the Analyze page offers a stress test to check any single image.</div>`;
+}
+
+/* active section in the TOC */
+const links = [...document.querySelectorAll("#toc a")];
+document.querySelectorAll("section.blk").forEach(sec => {
+  new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + sec.id)); }), {rootMargin: "-30% 0px -60% 0px"}).observe(sec);
+});
+</script>
+</body>
+</html>

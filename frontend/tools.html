@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Detectors: Emet Lens</title>
+<meta name="description" content="Every detector in the Emet Lens engine: what it looks at, how it works, what it outputs, and where it fails.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%237aa2ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%237aa2ff'/%3E%3C/svg%3E">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+.tcard{display:flex;flex-direction:column;gap:0;height:100%}
+.tcard .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.tcard .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:18px}
+.tcard .go{margin-top:auto;padding-top:18px;color:var(--accent);font-size:.9rem;display:flex;gap:6px;align-items:center}
+.tcard .tg{font-family:var(--serif);font-size:1.15rem;line-height:1.3;margin:0 0 8px;font-weight:500}
+.steps2{margin:0;padding:0;list-style:none;counter-reset:z;display:grid;gap:14px}
+.steps2 li{counter-increment:z;display:grid;grid-template-columns:34px 1fr;gap:14px}
+.steps2 li::before{content:counter(z);width:30px;height:30px;border-radius:50%;border:1px solid var(--accent);color:var(--accent);display:grid;place-items:center;font-family:var(--mono);font-size:.82rem}
+.steps2 li span{color:var(--mut);padding-top:3px}
+.sw{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:760px){.sw{grid-template-columns:1fr}}
+.sw .card ul{margin:12px 0 0;padding-left:18px;color:var(--mut);font-size:.93rem} .sw .card li{margin:8px 0}
+.sw h3{display:flex;align-items:center;gap:8px}
+.mets{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.mets div{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--s1)}
+.mets b{display:block;font-family:var(--serif);font-size:1.8rem;font-weight:500;line-height:1.1}
+.mets span{color:var(--mut);font-size:.82rem}
+.pn{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:600px){.pn{grid-template-columns:1fr}}
+.pn a{text-decoration:none;border:1px solid var(--line);border-radius:var(--r);padding:16px 20px;background:var(--s1);transition:border-color .2s,transform .2s} .pn a:hover{border-color:var(--accent);transform:translateY(-2px)}
+.pn small{display:block;color:var(--dim);font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase} .pn .nx{text-align:right}
+.kv2{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;margin:0;font-size:.92rem} .kv2 dt{color:var(--mut)} .kv2 dd{margin:0}
+</style>
+</head>
+<body>
+<header id="site-nav"></header>
+<div id="view"></div>
+<footer id="site-foot"></footer>
+<script src="/static/tools-data.js"></script>
+<script src="/static/site.js"></script>
+<script>
+const view = document.getElementById("view");
+const slug = location.pathname.replace(/\/$/, "").split("/")[2];
+const ICO = i => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${i}</svg>`;
+const statusChip = (t, st) => !t.ckpt ? '<span class="chip acc">No training needed</span>'
+  : !st ? '<span class="chip">Status unknown</span>'
+  : st.checkpoints[t.ckpt] ? '<span class="chip ok"><i class="dot"></i>Trained · ready</span>' : '<span class="chip warn"><i class="dot"></i>Not trained yet</span>';
+const color = j => j.replace(/("[^"]+")(:)/g, '<span class="k">$1</span>$2').replace(/: ("[^"]*")/g, ': <span class="s">$1</span>').replace(/: (-?[\d.]+)/g, ': <span class="n">$1</span>');
+
+Promise.all([getStatus(), fetch("/api/eval").then(r => r.json()).catch(() => ({available: false}))]).then(([st, ev]) => {
+  const t = TOOLS.find(x => x.slug === slug);
+  slug && !t ? notFound() : t ? detail(t, st, ev) : index(st);
+});
+
+function index(st) {
+  document.title = "Detectors: Emet Lens";
+  view.innerHTML = `<section class="page-head wrap"><div class="crumbs"><a href="/">Home</a> / Detectors</div>
+    <h1 class="disp" style="font-size:clamp(2.2rem,5vw,3.6rem)">Detectors</h1>
+    <p class="lead">Each component below says what it looks at, how it works, what it returns and where it fails. The status badges show what is trained on this machine right now.</p></section>
+    <section class="sec" style="padding-top:28px"><div class="wrap"><div class="grid g3">${TOOLS.map((t, i) => `
+      <a class="card lift tcard rv" style="--d:${i * .05}s" href="/tools/${t.slug}"><div class="top"><div class="ico" style="margin:0">${ICO(t.icon)}</div>${statusChip(t, st)}</div>
+        <h3 style="margin-top:18px;font-size:1.2rem">${t.name}</h3><p class="tg" style="margin-top:6px">${t.tag}</p><p>${t.summary}</p>
+        <div class="meta"><span class="chip">${t.media}</span><span class="chip ${t.role.startsWith("Decides") || t.role.startsWith("Makes") ? "acc" : ""}">${t.role}</span></div>
+        <div class="go">Read more ${ARROW}</div></a>`).join("")}</div>
+      <div class="callout rv" style="margin-top:34px"><b>How they fit together.</b> The CLIP probe and the frequency detector produce the scores, and the judge combines them. ELA and metadata add context. Video and audio reuse the same parts. See the <a href="/how-it-works" style="color:var(--accent)">pipeline</a>.</div></div></section>`;
+  document.dispatchEvent(new Event("rescan")); reveal();
+}
+
+function detail(t, st, ev) {
+  document.title = t.name + ": Emet Lens";
+  const i = TOOLS.indexOf(t), prev = TOOLS[(i + TOOLS.length - 1) % TOOLS.length], next = TOOLS[(i + 1) % TOOLS.length];
+  const key = {clip_probe: "clip_probe/clean", frequency: "frequency/clean", judge: "judge/clean"}[t.id];
+  const m = ev.available && key && ev.results[key];
+  const pct = x => (x * 100).toFixed(x < .1 ? 1 : 0) + "%";
+  const mets = m ? `<section class="sec alt" style="padding:56px 0"><div class="wrap"><div class="sec-head rv" style="margin-bottom:24px"><h2 class="disp" style="font-size:1.9rem">How it does on held-out images</h2>
+      <p class="mut">Test split only (${ev.n_test} images from sources the model never saw in training). Threshold 0.5. <a href="/methodology#results" style="color:var(--accent)">Full results and caveats</a>.</p></div>
+      <div class="mets rv"><div><b>${pct(m.fpr_real)}</b><span>real images wrongly flagged</span></div><div><b>${pct(m.seen.tpr_fake)}</b><span>fakes caught · seen generators</span></div><div><b>${m.seen.auc.toFixed(2)}</b><span>AUC · seen generators</span></div><div><b>${m.unseen.auc != null ? m.unseen.auc.toFixed(2) : "n/a"}</b><span>AUC · unseen generator</span></div></div></div></section>` : "";
+  const json = JSON.stringify(t.sample, null, 2);
+  view.innerHTML = `<section class="page-head wrap"><div class="crumbs"><a href="/">Home</a> / <a href="/tools">Detectors</a> / ${t.name}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px">${statusChip(t, st)}<span class="chip">${t.media}</span><span class="chip acc">${t.role}</span></div>
+    <h1 class="disp" style="font-size:clamp(2.2rem,5vw,3.4rem)">${t.name}</h1><p class="lead" style="font-size:1.3rem;font-family:var(--serif);color:var(--fg)">${t.tag}</p><p class="lead">${t.summary}</p></section>
+    <section class="sec" style="padding:40px 0 64px"><div class="wrap"><div class="grid g2" style="gap:44px;align-items:start">
+      <div class="rv"><p class="eyebrow">What it looks at</p><div class="prose"><p style="font-size:1.05rem">${t.looks}</p></div>
+        <p class="eyebrow" style="margin-top:34px">Implementation</p><dl class="kv2"><dt>Model</dt><dd class="mono">${t.model}</dd><dt>Device</dt><dd>${st ? st.device.toUpperCase() : "n/a"} (a supported GPU when present, otherwise CPU)</dd></dl></div>
+      <div class="rv" style="--d:.08s"><p class="eyebrow">How it works</p><ol class="steps2">${t.how.map(h => `<li><span>${h}</span></li>`).join("")}</ol></div></div></div></section>
+    <section class="sec alt" style="padding:56px 0"><div class="wrap"><div class="sec-head rv" style="margin-bottom:24px"><h2 class="disp" style="font-size:1.9rem">Output</h2></div>
+      <div class="grid g2" style="align-items:start"><pre class="code rv">${color(json)}</pre><div class="prose rv" style="--d:.08s"><p><b>Example output.</b> This shows the <i>shape</i> of the result, not a real analysis. The dashboard renders these fields directly.</p><p><b>score_fake</b> runs from 0 (real) to 1 (fake). The <b>finding</b> is shown in plain English next to it${t.id === "ela" ? ", with the heatmap drawn over your image" : ""}.</p></div></div></div></section>
+    ${mets}
+    <section class="sec" style="padding:64px 0"><div class="wrap"><div class="sec-head rv" style="margin-bottom:26px"><h2 class="disp" style="font-size:1.9rem">Strengths and limits</h2></div>
+      <div class="sw"><div class="card rv"><h3><span style="color:var(--ok)">✓</span> Strengths</h3><ul>${t.strengths.map(x => `<li>${x}</li>`).join("")}</ul></div>
+      <div class="card rv" style="--d:.08s"><h3><span style="color:var(--warn)">!</span> Blind spots</h3><ul>${t.blind.map(x => `<li>${x}</li>`).join("")}</ul></div></div>
+      <p style="margin-top:30px" class="rv"><a class="btn" href="/analyze">Try it on a file ${ARROW}</a></p>
+      <div class="pn" style="margin-top:44px"><a href="/tools/${prev.slug}"><small>← Previous</small>${prev.name}</a><a class="nx" href="/tools/${next.slug}"><small>Next →</small>${next.name}</a></div></div></section>`;
+  reveal();
+}
+function notFound() { view.innerHTML = `<section class="page-head wrap"><h1 class="disp">Detector not found</h1><p class="lead">That page doesn't exist. <a href="/tools" style="color:var(--accent)">See all detectors</a>.</p></section>`; }
+function reveal() {
+  const els = [...view.querySelectorAll(".rv")];
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), {threshold: .1});
+  els.forEach(el => io.observe(el)); window.scrollTo(0, 0);
+}
+</script>
+</body>
+</html>

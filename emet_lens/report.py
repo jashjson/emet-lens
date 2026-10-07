@@ -19,6 +19,17 @@ def _pct(x):
     return f"{x:.0%}"
 
 
+LIPSYNC_LABEL = {"in_sync": "IN SYNC", "out_of_sync": "OUT OF SYNC", "not_checked": "NOT CHECKED"}
+
+
+def lipsync_report(signals):
+    """Explicit lip-sync answer for videos: status in_sync / out_of_sync / not_checked, or None if not a video with audio."""
+    s = next((x for x in signals if x["name"] == "lipsync"), None)
+    if s is None or "data" not in s:
+        return None
+    return {**s["data"], "label": LIPSYNC_LABEL[s["data"]["status"]], "explanation": s["finding"]}
+
+
 def build_summary(p_fake, verdict, reason, signals, assessment=None, declared_ai=False):
     auth = _pct(1 - p_fake)
     used = [x for x in signals if x["name"] in ("clip_probe", "frequency", "audio") and x.get("reliable", True)]
@@ -36,6 +47,9 @@ def build_summary(p_fake, verdict, reason, signals, assessment=None, declared_ai
     conf = assessment["confidence"] if assessment else None
     if conf and conf != "none":
         out += f" Confidence: {conf}" + (f" ({reason})." if reason else ".")
+    ls = lipsync_report(signals)
+    if ls:
+        out += f" Lip-sync: {ls['label']}. {ls['explanation']}"
     return out
 
 
@@ -45,6 +59,7 @@ def build_report(p_fake, verdict, reason, signals, flagged=None, caveats=None, a
         "verdict": verdict,
         **({"inconclusive_reason": reason} if reason else {}),
         "summary": build_summary(p_fake, verdict, reason, signals, assessment, declared_ai),
+        **({"lipsync": lipsync_report(signals)} if lipsync_report(signals) else {}),
         **({"assessment": assessment} if assessment else {}),
         **({"caveats": caveats} if caveats else {}),
         "signals": signals,

@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analyze: Emet Lens</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%237aa2ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%237aa2ff'/%3E%3C/svg%3E">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+body{font-size:14.5px;line-height:1.5}
+.app{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 61px)}
+.side{border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--s1);min-width:0}
+main{padding:22px;min-width:0;max-width:1180px;width:100%}
+@media (max-width:860px){.app{grid-template-columns:1fr}.side{border-right:0;border-top:1px solid var(--line);order:3}main{padding:14px}}
+.stack{display:flex;flex-direction:column;gap:14px}
+.btn.sm{padding:6px 12px;font-size:.85rem}
+.btn:disabled{opacity:.55;cursor:default;filter:none}
+
+/* sidebar */
+.side h3{margin:0;font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:600;display:flex;justify-content:space-between;align-items:center;font-family:var(--mono)}
+.side h3 button{background:none;border:0;color:var(--dim);font-size:.74rem;text-transform:none;letter-spacing:0;padding:0;font-family:var(--sans)}
+.side h3 button:hover{color:var(--fg)}
+.hist{display:flex;flex-direction:column;gap:4px;margin:0;padding:0;list-style:none}
+.hist li{position:relative}
+.hitem{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:1px solid transparent;border-radius:8px;padding:6px 34px 6px 6px;transition:background-color .15s,border-color .15s,transform .15s}
+.hitem:hover{background:var(--s2);transform:translateX(2px)} .hitem.on{background:var(--s2);border-color:var(--line2)}
+.thumb{width:40px;height:40px;border-radius:6px;background:var(--s2);border:1px solid var(--line);flex:none;object-fit:cover;display:grid;place-items:center;color:var(--dim);overflow:hidden}
+.hmeta{min-width:0;flex:1}
+.hname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.88rem}
+.hsub{display:flex;gap:6px;align-items:center;font-size:.76rem;color:var(--mut)}
+.vd{width:7px;height:7px;border-radius:50%;background:var(--dim);flex:none}
+.vd.real{background:var(--ok)} .vd.fake{background:var(--bad)} .vd.inc{background:var(--warn)}
+.empty{color:var(--dim);font-size:.85rem;padding:4px 2px}
+.hdel{position:absolute;right:6px;top:50%;transform:translateY(-50%) scale(.85);width:24px;height:24px;border-radius:6px;border:0;background:none;color:var(--dim);display:grid;place-items:center;opacity:0;transition:opacity .15s,transform .15s,background-color .15s,color .15s}
+.hist li:hover .hdel,.hdel:focus-visible{opacity:1;transform:translateY(-50%) scale(1)}
+.hdel:hover{background:var(--badbg);color:var(--bad)}
+@media (hover:none){.hdel{opacity:.8;transform:translateY(-50%)}}
+.hist li.leaving{animation:leave .25s ease forwards}
+@keyframes leave{to{opacity:0;transform:translateX(-14px);height:0;margin:0}}
+.hist li.enter{animation:enter .35s ease}
+@keyframes enter{from{opacity:0;transform:translateX(-10px)}}
+
+/* panels */
+.panel{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;min-width:0;transition:border-color .2s,background-color .25s}
+.panel:hover{border-color:var(--line2)}
+.panel h2{margin:0 0 12px;font-size:.76rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-weight:600;font-family:var(--mono)}
+.dgrid{display:grid;gap:14px}
+.dgrid.a{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)} .dgrid.b{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:980px){.dgrid.a,.dgrid.b{grid-template-columns:1fr}}
+
+/* intake */
+#drop{position:relative;overflow:hidden;border:1.5px dashed var(--line2);border-radius:var(--r);padding:42px 20px;text-align:center;cursor:pointer;background:var(--s1);transition:border-color .15s,background-color .2s,transform .2s}
+#drop:hover,#drop.over{border-color:var(--accent);background:var(--s2)} #drop.over{transform:scale(1.01)}
+#drop .types{display:flex;justify-content:center;gap:28px;margin:0 0 18px;color:var(--mut);font-size:.82rem}
+#drop .types div{display:flex;flex-direction:column;align-items:center;gap:6px}
+#drop .types svg{color:var(--accent);transition:transform .25s cubic-bezier(.3,.8,.3,1.4)}
+#drop:hover .types div:nth-child(1) svg{transform:translateY(-4px) rotate(-6deg)}
+#drop:hover .types div:nth-child(2) svg{transform:translateY(-4px) scale(1.08)}
+#drop:hover .types div:nth-child(3) svg{transform:translateY(-4px) rotate(6deg)}
+#drop .big{font-size:1.1rem;font-weight:600;margin-bottom:4px}
+.ready{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.ready .pv{width:120px;height:90px;border-radius:8px;background:var(--s2);border:1px solid var(--line);display:grid;place-items:center;color:var(--dim);flex:none;overflow:hidden}
+.ready .info{flex:1;min-width:180px} .ready .fn{font-weight:600;word-break:break-all}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.samples-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:10px}
+.samples-row a{display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line);transition:transform .2s,border-color .2s}
+.samples-row a:hover{transform:translateY(-3px);border-color:var(--accent)}
+.samples-row img{width:100%;height:100%;object-fit:cover;display:block}
+.sub-note{color:var(--mut);font-size:.84rem;margin:0 0 12px}
+
+/* analyzing */
+.bar-ind{height:3px;border-radius:2px;background:var(--line);overflow:hidden;margin:14px 0 8px}
+.bar-ind i{display:block;height:100%;width:30%;background:var(--accent);border-radius:2px;animation:slide 1.3s ease-in-out infinite}
+@keyframes slide{0%{margin-left:-30%}100%{margin-left:100%}}
+.scan{position:relative;width:100%;max-width:420px;margin:0 auto 10px;border-radius:10px;overflow:hidden;background:var(--s2);border:1px solid var(--line);aspect-ratio:16/10;display:grid;place-items:center;color:var(--dim)}
+.scan img,.scan video{width:100%;height:100%;object-fit:cover;display:block}
+.scan::after{content:"";position:absolute;left:0;right:0;height:46px;top:-46px;background:linear-gradient(to bottom,transparent,color-mix(in srgb,var(--accent) 38%,transparent));border-bottom:2px solid var(--accent);animation:scan 2s ease-in-out infinite}
+@keyframes scan{0%{top:-46px}100%{top:100%}}
+body.busy .brand svg{animation:spin 1.6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* viewer */
+.viewer{position:relative;background:#000;border-radius:8px;overflow:hidden;display:grid;place-items:center;min-height:240px}
+.viewer img,.viewer video{max-width:100%;max-height:420px;display:block}
+.viewer audio{width:92%;margin:60px 0}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;margin-bottom:10px}
+.seg button{background:none;border:0;padding:5px 14px;font-size:.84rem;color:var(--mut)} .seg button.on{background:var(--s2);color:var(--fg)}
+.legend{display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--mut);margin-top:8px}
+.legend i{flex:1;height:6px;border-radius:3px;background:linear-gradient(90deg,#1b3a8a,#17a3b8,#8fd14f,#f5d142,#e5484d)}
+
+/* score */
+.score{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.ring{position:relative;width:170px;height:170px}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)} .ring circle{fill:none;stroke-width:9}
+.ring .trk{stroke:var(--line)} .ring .val{stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.2,.7,.2,1)}
+.ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring .pct{font-size:2.6rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums} .ring .lbl{font-size:.75rem;color:var(--mut);margin-top:4px}
+.pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:5px 14px;font-weight:650;font-size:.92rem;letter-spacing:.02em;animation:pop .5s cubic-bezier(.3,1.5,.5,1) .6s both}
+@keyframes pop{from{opacity:0;transform:scale(.7)}}
+.pill.real{background:var(--okbg);color:var(--ok)} .pill.fake{background:var(--badbg);color:var(--bad)} .pill.inc{background:var(--warnbg);color:var(--warn)}
+.conf{font-size:.84rem;color:var(--mut)} .conf b{font-weight:600}
+.summary{font-size:.9rem;color:var(--mut);text-align:left;border-top:1px solid var(--line);padding-top:12px;width:100%}
+
+/* evidence */
+.ev{border-top:1px solid var(--line)} .ev:first-of-type{border-top:0}
+.ev summary{list-style:none;display:grid;grid-template-columns:minmax(0,1fr) 110px 92px 14px;gap:12px;align-items:center;padding:11px 0;cursor:pointer}
+.ev summary::-webkit-details-marker{display:none} .ev summary:hover .nm{color:var(--accent)}
+.ev .nm{font-weight:550;min-width:0} .ev .nm small{display:block;color:var(--dim);font-size:.74rem;font-weight:400}
+.meter i{animation:grow .9s cubic-bezier(.2,.7,.2,1) both;animation-delay:.25s} @keyframes grow{from{transform:scaleX(0)}}
+.badge{font-size:.72rem;font-weight:650;text-align:center;border-radius:5px;padding:3px 0;letter-spacing:.04em;text-transform:uppercase}
+.badge.ok{background:var(--okbg);color:var(--ok)} .badge.warn{background:var(--warnbg);color:var(--warn)} .badge.bad{background:var(--badbg);color:var(--bad)} .badge.off{background:var(--s2);color:var(--dim)}
+.chev{color:var(--dim);transition:transform .15s} .ev[open] .chev{transform:rotate(90deg)}
+.ev .body{padding:0 0 12px;color:var(--mut);font-size:.9rem;animation:fade .25s ease both}
+.ev .body a{color:var(--accent)}
+@media (max-width:560px){.ev summary{grid-template-columns:minmax(0,1fr) 84px 14px}.ev .meter{display:none}}
+
+.kv{display:grid;grid-template-columns:auto 1fr;gap:9px 14px;margin:0}
+.kv dt{color:var(--mut)} .kv dd{margin:0;text-align:right;font-weight:550;word-break:break-word}
+.why{margin:0;padding:0;list-style:none;counter-reset:w;display:flex;flex-direction:column;gap:10px}
+.why li{counter-increment:w;display:grid;grid-template-columns:24px 1fr;gap:10px;font-size:.9rem;animation:fade .4s ease both}
+.why li::before{content:counter(w);width:22px;height:22px;border-radius:50%;background:var(--s2);border:1px solid var(--line2);display:grid;place-items:center;font-size:.76rem;color:var(--mut)}
+.why li:nth-child(2){animation-delay:.1s}.why li:nth-child(3){animation-delay:.2s}.why li:nth-child(4){animation-delay:.3s}.why li:nth-child(5){animation-delay:.4s}
+.limits{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:.85rem;color:var(--mut)} .limits b{color:var(--warn);font-weight:600} .limits ul{margin:6px 0 0;padding-left:18px}
+.mom{display:grid;grid-template-columns:70px 1fr 44px;gap:12px;align-items:center;padding:6px 0;font-size:.88rem}
+
+/* ground truth + stress test */
+.gt{border-radius:var(--r);padding:14px 18px;border:1px solid var(--line2);display:flex;gap:14px;align-items:flex-start}
+.gt.ok{background:var(--okbg);border-color:color-mix(in srgb,var(--ok) 45%,transparent)} .gt.no{background:var(--badbg);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
+.gt b{font-weight:650} .gt .mark{font-size:1.4rem;line-height:1.2}
+.rob{display:grid;gap:10px;margin-top:12px}
+.rob .r{display:grid;grid-template-columns:110px 1fr 54px 92px;gap:12px;align-items:center;font-size:.88rem}
+@media (max-width:560px){.rob .r{grid-template-columns:90px 1fr 46px}.rob .r .badge{display:none}}
+.err{background:var(--badbg);border:1px solid var(--bad);color:var(--fg)}
+pre{overflow:auto;font-size:.78rem;max-height:340px;background:var(--s2);padding:12px;border-radius:8px;margin:10px 0 0}
+details.raw summary{cursor:pointer;color:var(--mut);font-size:.85rem}
+.fade{animation:fade .35s ease both} @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#dash>*:nth-child(2){animation-delay:.07s}#dash>*:nth-child(3){animation-delay:.14s}#dash>*:nth-child(4){animation-delay:.21s}
+#intake,#ready,#busy{animation:fade .3s ease both}
+
+#toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,24px);opacity:0;pointer-events:none;background:var(--fg);color:var(--bg);border-radius:10px;padding:10px 12px 10px 16px;display:flex;align-items:center;gap:14px;font-size:.9rem;box-shadow:0 8px 28px rgba(0,0,0,.28);transition:opacity .2s,transform .25s cubic-bezier(.2,.8,.2,1);z-index:50}
+#toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#toast button{background:none;border:0;color:var(--accent);font-weight:650;padding:2px 6px;border-radius:6px}
+:root[data-theme="light"] #toast button{color:#7aa2ff}
+#toast button:hover{text-decoration:underline}
+@media (prefers-reduced-motion:reduce){.scan::after,.bar-ind i{animation:none}.meter i,.pill,.why li,#dash>*,#intake,#ready,#busy{animation:none}.ring .val{transition:none}}
+</style>
+</head>
+<body>
+<header id="site-nav"></header>
+<div class="app">
+  <aside class="side">
+    <button class="btn" id="newBtn" style="justify-content:center">New analysis</button>
+    <h3>Recent <button id="clearHist" hidden>Clear</button></h3>
+    <ul class="hist" id="hist"></ul>
+  </aside>
+
+  <main class="stack">
+    <section id="intake" class="stack">
+      <div id="drop" tabindex="0" role="button" aria-label="Choose a file to analyze">
+        <div class="types">
+          <div><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>Image</div>
+          <div><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>Video</div>
+          <div><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>Audio</div>
+        </div>
+        <div class="big">Drop a file here, or click to browse</div>
+        <div class="mut" id="extList">You can also paste an image from the clipboard.</div>
+        <input id="file" type="file" hidden>
+      </div>
+      <div class="panel" id="sampPanel" hidden>
+        <h2>Or try a held-out sample</h2>
+        <p class="sub-note">Test-split images the model never trained on. The ground truth is revealed after the verdict.</p>
+        <div class="samples-row" id="samples"></div>
+      </div>
+    </section>
+
+    <section id="ready" class="panel" hidden>
+      <div class="ready">
+        <div class="pv" id="rPv"></div>
+        <div class="info"><div class="fn" id="rName"></div><div class="mut num" id="rMeta"></div></div>
+        <div class="actions"><button class="btn ghost" id="change">Change</button><button class="btn" id="go">Analyze</button></div>
+      </div>
+    </section>
+
+    <section id="busy" class="panel" hidden>
+      <div class="scan" id="scan"></div>
+      <div id="busyTitle" style="font-weight:600"></div>
+      <div class="bar-ind"><i></i></div>
+      <div class="mut num" id="busyNote"></div>
+    </section>
+
+    <div id="err" class="panel err" hidden></div>
+    <div id="dash" class="stack" hidden></div>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"><span id="toastMsg"></span><button id="toastUndo">Undo</button></div>
+
+<script src="/static/site.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const sz = b => b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
+const tone = p => p < .35 ? "ok" : p < .65 ? "warn" : "bad";
+const TONECOL = {ok:"var(--ok)", warn:"var(--warn)", bad:"var(--bad)"};
+const TONELBL = {ok:"Authentic", warn:"Uncertain", bad:"Suspicious"};
+const NAMES = {
+  clip_probe:["Image content","CLIP probe","clip-probe"], frequency:["Frequency spectrum","Fourier artefacts","frequency"],
+  ela:["Editing traces","Error-level analysis","ela"], metadata:["File metadata","EXIF / provenance","metadata"],
+  audio:["Audio authenticity","wav2vec2","audio"], lipsync:["Lip-sync","Mouth vs speech","lipsync"], frame_consistency:["Frame consistency","Across sampled frames","video"],
+};
+const nameOf = n => NAMES[n] || [n.replace(/_/g, " "), "", ""];
+const ICON = {
+  image:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>',
+  video:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>',
+  audio:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/></svg>',
+};
+const kindOf = f => f.type.startsWith("image/") ? "image" : f.type.startsWith("video/") ? "video" : f.type.startsWith("audio/") ? "audio" : "image";
+const VERD = {likely_real:["real","Likely real","Real"], likely_fake:["fake","Likely fake","Fake"], inconclusive:["inc","No verdict","No verdict"]};
+
+let file = null, current = null, timer = null, justAdded = null;
+
+/* ---------- history (browser only) ---------- */
+const HK = "emet_lens_history_v1";
+const loadHist = () => { try { return JSON.parse(localStorage.getItem(HK)) || []; } catch { return []; } };
+const saveHist = h => { try { localStorage.setItem(HK, JSON.stringify(h.slice(0, 12))); } catch {} };
+const ago = t => { const m = (Date.now() - t) / 60000; return m < 1 ? "just now" : m < 60 ? Math.round(m) + "m ago" : m < 1440 ? Math.round(m / 60) + "h ago" : Math.round(m / 1440) + "d ago"; };
+function renderHist() {
+  const h = loadHist();
+  $("clearHist").hidden = !h.length;
+  $("hist").innerHTML = h.length ? h.map(e => {
+    const [cls,,lbl] = VERD[e.rep.verdict];
+    const th = e.thumb ? `<img class="thumb" src="${e.thumb}" alt="">` : `<div class="thumb">${ICON[e.rep.media_kind] || ""}</div>`;
+    return `<li data-id="${e.id}"${justAdded === e.id ? ' class="enter"' : ""}><button class="hitem${current === e.id ? " on" : ""}" data-id="${e.id}">${th}<div class="hmeta"><div class="hname">${esc(e.name)}</div><div class="hsub"><span class="vd ${cls}"></span>${lbl} · ${ago(e.t)}</div></div></button>
+      <button class="hdel" data-del="${e.id}" aria-label="Delete ${esc(e.name)} from history" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></li>`;
+  }).join("") : '<li class="empty">No analyses yet.</li>';
+  justAdded = null;
+}
+let toastT = null, undoFn = null;
+function toast(msg, undo) {
+  $("toastMsg").textContent = msg; undoFn = undo || null;
+  $("toastUndo").hidden = !undo; $("toast").classList.add("on");
+  clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 6000);
+}
+$("toastUndo").onclick = () => { if (undoFn) undoFn(); undoFn = null; $("toast").classList.remove("on"); };
+function deleteEntry(id) {
+  const h = loadHist(), i = h.findIndex(e => e.id === id);
+  if (i < 0) return;
+  const [gone] = h.splice(i, 1), wasOpen = current === id;
+  const finish = () => {
+    saveHist(h);
+    if (wasOpen) { current = null; file = null; $("file").value = ""; show("intake"); }
+    renderHist();
+    toast(`Deleted “${gone.name}”`, () => { const cur = loadHist(); cur.splice(Math.min(i, cur.length), 0, gone); saveHist(cur); renderHist(); });
+  };
+  const li = $("hist").querySelector(`li[data-id="${id}"]`);
+  if (li && !matchMedia("(prefers-reduced-motion:reduce)").matches) { li.classList.add("leaving"); setTimeout(finish, 240); } else finish();
+}
+$("hist").onclick = ev => {
+  const d = ev.target.closest(".hdel");
+  if (d) return deleteEntry(d.dataset.del);
+  const b = ev.target.closest(".hitem"); if (!b) return;
+  const e = loadHist().find(x => x.id === b.dataset.id); if (!e) return;
+  file = null; current = e.id; show("dash"); renderResult(e.rep, e.name); renderHist();
+};
+$("clearHist").onclick = () => {
+  const all = loadHist(), wasOpen = all.some(e => e.id === current);
+  saveHist([]); if (wasOpen) { current = null; show("intake"); } renderHist();
+  toast(`Cleared ${all.length} ${all.length === 1 ? "analysis" : "analyses"}`, () => { saveHist(all); renderHist(); });
+};
+function thumbOf(f) {
+  return new Promise(res => {
+    if (!f.type.startsWith("image/")) return res(null);
+    const im = new Image(); im.onload = () => {
+      const c = document.createElement("canvas"), s = 80, r = Math.max(s / im.width, s / im.height);
+      c.width = c.height = s; c.getContext("2d").drawImage(im, (s - im.width * r) / 2, (s - im.height * r) / 2, im.width * r, im.height * r);
+      res(c.toDataURL("image/jpeg", .7));
+    }; im.onerror = () => res(null); im.src = URL.createObjectURL(f);
+  });
+}
+
+/* ---------- views ---------- */
+function show(v) {  // intake | ready | busy | dash
+  $("intake").hidden = v !== "intake"; $("ready").hidden = v !== "ready";
+  $("busy").hidden = v !== "busy"; $("dash").hidden = v !== "dash";
+  if (v !== "dash") $("err").hidden = true;
+}
+$("newBtn").onclick = () => { file = null; current = null; $("file").value = ""; history.replaceState(null, "", "/analyze"); show("intake"); renderHist(); };
+$("change").onclick = () => $("file").click();
+
+fetch("/api/health").then(r => r.json()).then(h => {
+  const all = [...h.image, ...h.video, ...h.audio];
+  $("file").accept = all.join(","); $("extList").textContent = all.join("  ") + " · or paste an image";
+}).catch(() => {});
+fetch("/api/samples").then(r => r.json()).then(list => {
+  if (!list.length) return;
+  $("sampPanel").hidden = false;
+  $("samples").innerHTML = list.map(s => `<a href="#" data-id="${s.id}" title="Analyze this held-out image"><img src="/api/sample/${s.id}/thumb" alt="Held-out test image"></a>`).join("");
+}).catch(() => {});
+$("samples").onclick = e => { const a = e.target.closest("a"); if (a) { e.preventDefault(); analyzeSample(a.dataset.id); } };
+
+const drop = $("drop");
+drop.onclick = () => $("file").click();
+drop.onkeydown = e => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), $("file").click());
+["dragover", "dragenter"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
+document.addEventListener("drop", e => pick(e.dataTransfer.files[0]));
+document.addEventListener("paste", e => { const f = [...(e.clipboardData?.files || [])][0]; if (f) pick(f); });
+$("file").onchange = e => pick(e.target.files[0]);
+
+function pick(f) {
+  if (!f) return;
+  file = f; current = null; $("err").hidden = true;
+  const url = URL.createObjectURL(f), k = kindOf(f);
+  $("rPv").innerHTML = k === "image" ? `<img src="${url}" style="width:100%;height:100%;object-fit:cover" alt="">`
+    : k === "video" ? `<video src="${url}" muted style="width:100%;height:100%;object-fit:cover"></video>` : ICON[k];
+  $("rName").textContent = f.name; $("rMeta").textContent = `${sz(f.size)} · ${f.type || "unknown type"}`;
+  show("ready"); renderHist();
+}
+
+/* ---------- running an analysis ---------- */
+function startBusy(title, previewHtml, long) {
+  show("busy"); document.body.classList.add("busy");
+  $("scan").innerHTML = previewHtml; $("busyTitle").textContent = title;
+  const t0 = Date.now();
+  const tick = () => $("busyNote").textContent = `${((Date.now() - t0) / 1000).toFixed(0)}s elapsed` + (long ? " · video samples frames and can take a minute or more depending on your hardware" : "");
+  tick(); timer = setInterval(tick, 1000);
+}
+function stopBusy() { clearInterval(timer); document.body.classList.remove("busy"); }
+function fail(msg, back) {
+  show(back); $("err").innerHTML = `<b>Could not analyze this file.</b><div class="mut">${esc(msg)}</div>`; $("err").hidden = false;
+}
+async function finish(body, name, thumb) {
+  const id = String(Date.now()); current = id; justAdded = id;
+  const h = loadHist(); h.unshift({id, name, t: Date.now(), thumb, rep: body}); saveHist(h);
+  show("dash"); renderResult(body, name); renderHist();
+}
+
+$("go").onclick = async () => {
+  if (!file) return;
+  const f = file, k = kindOf(f), u = URL.createObjectURL(f);
+  startBusy(`Analyzing ${f.name}`, k === "image" ? `<img src="${u}" alt="">` : k === "video" ? `<video src="${u}" muted></video>` : ICON[k].replace('width="18" height="18"', 'width="40" height="40"'), k === "video");
+  try {
+    const fd = new FormData(); fd.append("file", f);
+    const r = await fetch("/api/analyze", {method: "POST", body: fd});
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.detail || `Server error ${r.status}`);
+    await finish(body, f.name, await thumbOf(f));
+  } catch (e) { fail(e.message, "ready"); } finally { stopBusy(); }
+};
+
+async function analyzeSample(id) {
+  file = null; history.replaceState(null, "", "/analyze?sample=" + id);
+  startBusy("Analyzing held-out sample", `<img src="/api/sample/${id}/thumb" alt="">`, false);
+  try {
+    const r = await fetch("/api/analyze-sample/" + id, {method: "POST"});
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.detail || `Server error ${r.status}`);
+    const blob = await (await fetch("/api/sample/" + id + "/thumb")).blob();
+    await finish(body, body.provenance.filename, await thumbOf(blob));
+  } catch (e) { fail(e.message, "intake"); } finally { stopBusy(); }
+}
+
+/* ---------- result ---------- */
+function renderResult(rep, name) {
+  const v = rep.verdict, a = rep.assessment || null, inc = v === "inconclusive";
+  const [cls, lbl] = VERD[v];
+  const ringCol = {real:"var(--ok)", fake:"var(--bad)", inc:"var(--warn)"}[cls];
+  const conf = a ? a.confidence : "none", kind = rep.media_kind;
+  const heats = rep.signals.filter(s => s.heatmap);
+  const sentences = (rep.summary || "").split(/(?<=\.)\s+/).filter(Boolean).slice(0, 5);
+  const gt = rep.ground_truth;
+
+  const media = kind === "image" ? `<img src="${rep.media_url}" alt="Analyzed image">` : kind === "video" ? `<video src="${rep.media_url}" controls></video>` : `<audio src="${rep.media_url}" controls></audio>`;
+  const toggle = heats.length ? `<div class="seg" role="group"><button class="on" data-v="orig">${kind === "video" ? "Video" : "Original"}</button><button data-v="heat">Heatmap</button></div>` : "";
+
+  const evidence = rep.signals.map(s => {
+    const [t, sub, slug] = nameOf(s.name), off = s.reliable === false, p = s.score_fake, tn = tone(p);
+    const ranges = s.time_ranges?.length ? `<div style="margin-top:6px" class="num">Suspicious at ${s.time_ranges.map(([x, y]) => `${fmt(x)}–${fmt(y)}`).join(", ")}</div>` : "";
+    return `<details class="ev"><summary><div class="nm">${esc(t)}<small>${esc(sub)}</small></div>
+      <div class="meter">${off ? "" : `<i style="width:${Math.round(p * 100)}%;background:${TONECOL[tn]}"></i>`}</div>
+      <div class="badge ${off ? "off" : tn}">${off ? "Not used" : TONELBL[tn]}</div>
+      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="body">${esc(s.finding)}${off ? `<div style="margin-top:6px">Excluded from the verdict because it isn't reliable for this file.</div>` : `<div class="num" style="margin-top:6px">Fake score ${p.toFixed(2)}</div>`}${ranges}${slug ? `<div style="margin-top:8px"><a href="/tools/${slug}">How this detector works →</a></div>` : ""}</div></details>`;
+  }).join("");
+
+  const f = a?.file || {}, pv = rep.provenance || {};
+  const rows = [
+    ["Media type", kind[0].toUpperCase() + kind.slice(1)],
+    ["File", name],
+    f.width ? ["Resolution", `${f.width} × ${f.height}`] : null,
+    a ? ["Face found", a.face_detected ? "Yes" : "No"] : null,
+    a && a.detectors_used?.length ? ["Detector agreement", Math.round(a.agreement * 100) + "%"] : null,
+    a ? ["Input quality", a.input_quality[0].toUpperCase() + a.input_quality.slice(1)] : null,
+    f.jpeg_quality ? ["JPEG quality", "~" + Math.round(f.jpeg_quality)] : null,
+    a ? ["Camera metadata", f.camera || "None"] : null,
+    a ? ["Checks used", a.detectors_used.map(d => nameOf(d)[0]).join(", ") || "None"] : null,
+    rep.elapsed_s != null ? ["Processing time", rep.elapsed_s + " s"] : null,
+    pv.analyzed_at ? ["Analyzed", new Date(pv.analyzed_at).toLocaleString()] : null,
+  ].filter(Boolean);
+  const skipped = a?.detectors_skipped?.length ? `<div class="mut" style="margin-top:12px;font-size:.84rem">Skipped: ${a.detectors_skipped.map(x => `${esc(nameOf(x.name)[0])} (${esc(x.reason)})`).join("; ")}</div>` : "";
+
+  const fl = rep.flagged || {};
+  const moments = [
+    ...(fl.frames || []).map(x => `<div class="mom"><span class="num">${fmt(x.time_s)}</span><div class="meter"><i style="width:${x.score_fake * 100}%;background:${TONECOL[tone(x.score_fake)]}"></i></div><span class="num mut">${x.score_fake.toFixed(2)}</span></div>`),
+    ...(fl.audio_seconds || []).map(([x, y]) => `<div class="mom"><span class="num">${fmt(x)}–${fmt(y)}</span><div class="mut">audio segment</div><span></span></div>`),
+    ...(fl.lipsync_seconds || []).map(([x, y]) => `<div class="mom"><span class="num">${fmt(x)}–${fmt(y)}</span><div class="mut">mouth does not match speech</div><span></span></div>`),
+  ].join("");
+  const LS = rep.lipsync, LSM = {in_sync: ["ok", "In sync", "Mouth movement follows the speech."], out_of_sync: ["bad", "Out of sync", "Mouth movement does not follow the speech: possible dubbed or cloned audio, or a lip-sync manipulation."], not_checked: ["off", "Not checked", "Could not be assessed for this file."]};
+  const lsRanges = fl.lipsync_seconds || [];
+  const lipsync = LS ? (() => { const [lc, ll, ls] = LSM[LS.status];
+    const stat = (k, v) => `<div><div class="mut" style="font-size:.78rem">${k}</div><div class="num" style="font-weight:600;font-size:1.05rem">${v}</div></div>`;
+    return `<div class="panel fade"><h2>Lip-sync check</h2>
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+        <span class="badge ${lc}" style="padding:7px 16px;font-size:.9rem">${ll}</span>
+        ${LS.correlation != null ? stat("Mouth-speech correlation", LS.correlation.toFixed(2)) + stat("Audio offset", (LS.offset_ms >= 0 ? "+" : "") + LS.offset_ms + " ms") + stat("Genuine speech is typically", "above ~0.30") : ""}
+      </div>
+      <div class="mut" style="margin-top:12px;font-size:.9rem">${esc(LS.explanation)}</div>
+      ${lsRanges.length ? `<div style="margin-top:10px;font-size:.88rem"><b style="color:var(--bad)">Mismatch at:</b> ${lsRanges.map(([x, y]) => `<span class="num">${fmt(x)}–${fmt(y)}</span>`).join(", ")}</div>` : ""}
+      <div class="mut" style="margin-top:10px;font-size:.78rem">Heuristic: compares mouth-region motion with audio loudness. It nudges the verdict only when there is a clear face and enough speech.</div></div>`; })() : "";
+  const limits = (rep.caveats?.length ? `<div class="limits"><b>Limits of this result</b><ul>${rep.caveats.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>` : "");
+
+  let gtHtml = "";
+  if (gt) {
+    const truthFake = gt.label === "fake", said = v === "likely_fake", ok = truthFake === said;
+    gtHtml = `<div class="gt ${ok ? "ok" : "no"} fade"><div class="mark">${ok ? "✓" : "✗"}</div><div><b>Ground truth revealed: ${truthFake ? `AI-generated or manipulated (${esc(gt.type)})` : "a real photograph"}.</b><div class="mut" style="margin-top:2px">Emet Lens said <b style="color:var(--fg)">${lbl.toLowerCase()}</b>${ok ? ", which is correct." : `, which is wrong. ${truthFake ? "This is a missed fake" : "This is a false alarm"}, exactly the kind of error reported on the <a href="/methodology#results" style="color:var(--accent)">Methodology</a> page.`}</div></div></div>`;
+  }
+
+  $("dash").innerHTML = `${gtHtml}
+  <div class="dgrid a fade">
+    <div class="panel"><h2>${kind === "video" ? "Video" : kind === "audio" ? "Audio" : "Image"}</h2>${toggle}
+      <div class="viewer" id="viewer">${media}</div>
+      <div class="legend" id="legend" hidden><span>authentic</span><i></i><span>suspicious</span></div></div>
+    <div class="panel score">
+      <h2 style="align-self:flex-start;margin:0">Authenticity</h2>
+      <div class="ring"><svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" id="rv" cx="60" cy="60" r="52" stroke="${ringCol}" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+        <div class="c"><div class="pct" id="pct">${inc ? "—" : "0%"}</div><div class="lbl">${inc ? "not enough evidence" : "100% = certainly real"}</div></div></div>
+      <div class="pill ${cls}">${lbl}</div>
+      ${inc || !a ? "" : `<div class="conf"><b style="color:${{high:"var(--ok)",medium:"var(--warn)",low:"var(--bad)",none:"var(--mut)"}[conf]}">${conf[0].toUpperCase() + conf.slice(1)}</b> confidence${a?.low_confidence_reason ? ` · ${esc(a.low_confidence_reason)}` : ""}</div>`}
+      <div class="summary">${esc(rep.summary)}</div>
+    </div>
+  </div>
+
+  ${lipsync}
+
+  <div class="dgrid b fade">
+    <div class="panel"><h2>Forensic evidence</h2>${evidence}</div>
+    <div class="panel"><h2>Investigation summary</h2>
+      <dl class="kv">${rows.map(([k, x]) => `<dt>${k}</dt><dd>${esc(x)}</dd>`).join("")}</dl>${skipped}</div>
+  </div>
+
+  <div class="dgrid ${moments ? "b" : ""} fade">
+    <div class="panel"><h2>Why this result</h2><ol class="why">${sentences.map(s => `<li><span>${esc(s)}</span></li>`).join("")}</ol>${limits}</div>
+    ${moments ? `<div class="panel"><h2>Flagged moments</h2><div class="mut" style="font-size:.84rem;margin-bottom:6px">Most suspicious points in the file, with fake score.</div>${moments}</div>` : ""}
+  </div>
+
+  ${kind === "image" && rep.job ? `<div class="panel fade" id="robPanel"><h2>Stress test</h2>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px" class="mut">Messaging apps and social media recompress images, which weakens some cues. Re-score this image after JPEG compression and downscaling to see whether the call holds up.</div><button class="btn sm" id="robGo">Run stress test</button></div>
+    <div id="robOut"></div></div>` : ""}
+
+  <div class="panel fade">
+    <div class="actions"><a class="btn sm" id="repBtn" href="/report?id=${encodeURIComponent(current || "")}" target="_blank" rel="noopener">Open forensic report</a><button class="btn sm ghost" id="dl">Download JSON</button><button class="btn sm ghost" id="cp">Copy JSON</button></div>
+    <details class="raw" style="margin-top:12px"><summary>Raw JSON</summary><pre>${esc(JSON.stringify(rep, null, 2))}</pre></details>
+  </div>`;
+
+  if (!inc) requestAnimationFrame(() => requestAnimationFrame(() => {
+    $("rv").style.strokeDashoffset = 326.7 * (1 - rep.authenticity);
+    countUp($("pct"), Math.round(rep.authenticity * 100), {suffix: "%"});
+  }));
+
+  document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
+    const heat = b.dataset.v === "heat";
+    $("viewer").innerHTML = heat ? `<img src="${heats[0].heatmap}" alt="Heatmap">` : media;
+    $("legend").hidden = !heat;
+  });
+  $("dl").onclick = () => {
+    const x = document.createElement("a");
+    x.href = URL.createObjectURL(new Blob([JSON.stringify(rep, null, 2)], {type: "application/json"}));
+    x.download = `emet-lens-${name.replace(/\.[^.]+$/, "")}.json`; x.click();
+  };
+  $("cp").onclick = () => navigator.clipboard.writeText(JSON.stringify(rep, null, 2)).then(() => { $("cp").textContent = "Copied"; setTimeout(() => $("cp").textContent = "Copy JSON", 1500); });
+
+  if ($("robGo")) $("robGo").onclick = async () => {
+    const btn = $("robGo"); btn.disabled = true; btn.textContent = "Testing…";
+    try {
+      const r = await fetch("/api/robustness/" + rep.job, {method: "POST"});
+      const rows = await r.json();
+      if (!r.ok) throw new Error(rows.detail || "The original file is no longer on the server. Re-upload it to stress-test.");
+      const all = [{label: "Original", authenticity: rep.authenticity, verdict: rep.verdict}, ...rows];
+      const flips = all.filter(x => x.verdict !== rep.verdict).length;
+      const span = Math.max(...all.map(x => x.authenticity)) - Math.min(...all.map(x => x.authenticity));
+      $("robOut").innerHTML = `<div class="rob">${all.map(x => { const p = 1 - x.authenticity, [c, , l] = VERD[x.verdict];
+        return `<div class="r"><span>${esc(x.label)}</span><div class="meter"><i style="width:${x.authenticity * 100}%;background:${TONECOL[tone(p)]}"></i></div><span class="num">${Math.round(x.authenticity * 100)}%</span><span class="badge ${c === "real" ? "ok" : c === "fake" ? "bad" : "warn"}">${l}</span></div>`; }).join("")}</div>
+        <p style="margin:14px 0 0;color:var(--mut);font-size:.9rem">${flips ? `<b style="color:var(--warn)">The verdict changes under compression in ${flips} of 3 tests.</b> Treat this result with extra caution: the cues it relies on don't survive recompression.` : `<b style="color:var(--ok)">The verdict is stable across all three tests</b> (authenticity moves by ${(span * 100).toFixed(0)} points at most).`}</p>`;
+      btn.remove();
+    } catch (e) { $("robOut").innerHTML = `<p style="color:var(--bad);margin:12px 0 0">${esc(e.message)}</p>`; btn.disabled = false; btn.textContent = "Retry"; }
+  };
+  window.scrollTo({top: 0});
+}
+
+renderHist();
+const q = new URLSearchParams(location.search).get("sample");
+if (q) analyzeSample(q);
+</script>
+</body>
+</html>

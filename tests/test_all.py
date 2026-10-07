@@ -138,3 +138,79 @@ def test_metadata_ai_marker_is_decisive_but_absence_is_neutral(tmp_path):
     assert not sig.decisive and shift == 0
     rep = analyze_image(str(q), [], Judge(ckpt=str(tmp_path / "j.joblib")), str(tmp_path / "o"))
     assert rep["verdict"] == "inconclusive"  # no pixel detectors + no declared marker -> no verdict
+
+
+def _speech_env(n, seed=0):
+    rng = np.random.RandomState(seed)
+    return np.convolve(np.abs(rng.randn(n)), np.ones(5) / 5, mode="same") ** 2 + 0.01
+
+
+def test_lipsync_synced_vs_mismatched_series():
+    from emet_lens.detectors.lipsync import lipsync_signal
+    fps, n = 25, 250
+    env = _speech_env(n)
+    rng = np.random.RandomState(1)
+    synced = lipsync_signal(env * 4 + 0.05 * rng.randn(n), env, fps)           # mouth follows speech, 80 ms lag ignored
+    shifted = lipsync_signal(np.roll(env, 2) + 0.05 * rng.randn(n), env, fps)
+    other = lipsync_signal(_speech_env(n, seed=9), env, fps)                    # mouth moves to different speech
+    assert synced.reliable and synced.score_fake < 0.3 and shifted.score_fake < 0.4
+    assert other.reliable and other.score_fake > 0.5 and other.time_ranges and "does not follow" in other.finding
+    assert not lipsync_signal(env, env * 0, fps).reliable          # silent audio -> cannot judge
+    assert not lipsync_signal(env[:50], env[:50], fps).reliable    # too short
+    assert not lipsync_signal(env, env, fps, face_frac=0.2).reliable
+
+
+def test_lipsync_shift_direction():
+    from emet_lens.base import Signal
+    from emet_lens.pipeline import lipsync_shift
+    assert lipsync_shift(Signal("lipsync", 0.9, "x")) > 1 and lipsync_shift(Signal("lipsync", 0.1, "x")) < 0
+    assert lipsync_shift(Signal("lipsync", 0.9, "x", reliable=False)) == 0 and lipsync_shift(None) == 0
+
+
+def test_lipsync_video_end_to_end(tmp_path):
+    """Synthetic talking video (real face photo, mouth area flickers with the audio) with matching vs unrelated audio."""
+    import glob, subprocess, cv2, imageio_ffmpeg, soundfile as sf
+    from emet_lens.detectors.lipsync import check_video
+    faces = sorted(glob.glob("data/ffhq/*.jpg"))
+    if not faces:
+        pytest.skip("needs a face image in data/ffhq")
+    base = cv2.resize(cv2.imread(faces[0]), (256, 256))
+    if not len(cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+               .detectMultiScale(cv2.cvtColor(base, cv2.COLOR_BGR2GRAY), 1.1, 5, minSize=(48, 48))):
+        pytest.skip("face photo not detected")
+    fps, secs, sr = 25, 8, 16000
+    env = _speech_env(fps * secs)
+    env = env / env.max()
+    rng = np.random.RandomState(0)
+
+    def make(audio_env, name):
+        vid = str(tmp_path / f"{name}.avi")
+        w = cv2.VideoWriter(vid, cv2.VideoWriter_fourcc(*"MJPG"), fps, (256, 256))
+        for i in range(fps * secs):
+            fr = base.astype(np.float32)
+            fr[150:240, 60:200] += rng.randn(90, 140, 1) * 0 + 70 * (env[i] - 0.3)   # mouth region follows video-side env
+            w.write(np.clip(fr, 0, 255).astype(np.uint8))
+        w.release()
+        t = np.arange(sr * secs) / sr
+        a = np.interp(t, np.arange(len(audio_env)) / fps, audio_env) * np.sin(2 * np.pi * 220 * t)
+        wav = str(tmp_path / f"{name}.wav")
+        sf.write(wav, a.astype(np.float32), sr)
+        return vid, wav
+
+    good = check_video(*make(env, "good"))
+    bad = check_video(*make(_speech_env(fps * secs, seed=5) / 1.0, "bad"))
+    assert good.reliable and bad.reliable
+    assert good.score_fake < bad.score_fake and good.score_fake < 0.5 < bad.score_fake
+
+
+def test_lipsync_status_in_report():
+    from emet_lens.detectors.lipsync import lipsync_signal
+    from emet_lens.report import build_report
+    fps, n = 25, 250
+    env = _speech_env(n)
+    for sig, status in [(lipsync_signal(env * 3, env, fps), "in_sync"),
+                        (lipsync_signal(_speech_env(n, seed=9), env, fps), "out_of_sync"),
+                        (lipsync_signal(env, env * 0, fps), "not_checked")]:
+        rep = build_report(0.2, "likely_real", "", [sig.to_dict()])
+        assert rep["lipsync"]["status"] == status and "Lip-sync:" in rep["summary"]
+    assert "lipsync" not in build_report(0.2, "likely_real", "", [])

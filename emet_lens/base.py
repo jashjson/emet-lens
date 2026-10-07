@@ -13,11 +13,14 @@ class Signal:
     time_ranges: list = field(default_factory=list)  # [(start_s, end_s)]
     decisive: bool = False     # self-declared provenance (e.g. AI-generator tag)
     reliable: bool = True      # False: shown as context only, excluded from the verdict
+    data: dict = field(default_factory=dict)  # optional structured details (e.g. lip-sync status)
 
     def to_dict(self):
         d = {"name": self.name, "score_fake": round(float(self.score_fake), 4), "finding": self.finding}
         if not self.reliable:
             d["reliable"] = False
+        if self.data:
+            d["data"] = self.data
         if self.time_ranges:
             d["time_ranges"] = [[round(a, 2), round(b, 2)] for a, b in self.time_ranges]
         return d

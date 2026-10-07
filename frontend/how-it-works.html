@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works: Emet Lens</title>
+<meta name="description" content="The Emet Lens pipeline from file to finding: how detectors are fused, calibrated, and how confidence is graded.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%237aa2ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%237aa2ff'/%3E%3C/svg%3E">
+<script src="/static/theme.js"></script>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+.pipe{display:grid;grid-template-columns:260px 1fr;gap:22px;align-items:start}
+@media (max-width:820px){.pipe{grid-template-columns:1fr}}
+.stages{display:flex;flex-direction:column;gap:6px;position:relative}
+@media (max-width:820px){.stages{flex-direction:row;overflow-x:auto;padding-bottom:6px}}
+.stage-btn{display:flex;gap:12px;align-items:center;text-align:left;background:none;border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:var(--mut);transition:all .2s;flex:none;min-width:150px}
+.stage-btn:hover{border-color:var(--line2);color:var(--fg)}
+.stage-btn .n{width:26px;height:26px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:.78rem;flex:none;transition:all .2s}
+.stage-btn.on{background:var(--s1);border-color:var(--accent);color:var(--fg)}
+.stage-btn.on .n{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.stage-btn b{font-weight:600;display:block;font-size:.95rem} .stage-btn small{display:block;font-size:.76rem;color:var(--dim)}
+.detail{background:var(--s1);border:1px solid var(--line);border-radius:var(--r);padding:28px;min-height:360px;animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.detail h3{margin:0 0 8px;font-size:1.5rem}
+.detail ul{padding-left:20px;color:var(--mut)} .detail li{margin:8px 0}
+.detail .two{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+@media (max-width:700px){.detail .two{grid-template-columns:1fr}}
+.detail h4{margin:0 0 8px;font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.logic{display:grid;gap:0;max-width:760px}
+.lg{display:grid;grid-template-columns:44px 1fr;gap:18px;padding-bottom:26px;position:relative}
+.lg::before{content:"";position:absolute;left:21px;top:44px;bottom:0;width:1px;background:var(--line2)} .lg:last-child::before{display:none}
+.lg .dot2{width:42px;height:42px;border-radius:50%;border:1px solid var(--line2);background:var(--s1);display:grid;place-items:center;font-family:var(--mono);color:var(--accent)}
+.lg h3{margin:4px 0 4px;font-size:1.08rem} .lg p{margin:0;color:var(--mut);font-size:.95rem}
+.factors{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.factor b{display:block;font-family:var(--serif);font-size:1.5rem;font-weight:500;margin-bottom:4px}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.rule{display:flex;gap:14px;padding:18px 0;border-top:1px solid var(--line)} .rule i{color:var(--ok);font-style:normal;flex:none;margin-top:1px}
+.rule b{display:block;margin-bottom:2px} .rule span{color:var(--mut);font-size:.93rem}
+</style>
+</head>
+<body>
+<header id="site-nav"></header>
+
+<section class="page-head wrap">
+  <div class="crumbs"><a href="/">Home</a> / How it works</div>
+  <h1 class="disp" style="font-size:clamp(2.2rem,5vw,3.6rem)">How a file becomes a verdict</h1>
+  <p class="lead">The pipeline has six stages: read the file, prepare the evidence, run the detectors, combine their scores, grade the confidence, and write the report. Click a stage for details.</p>
+</section>
+
+<section class="sec" style="padding-top:36px">
+  <div class="wrap pipe">
+    <div class="stages" id="stages" role="tablist" aria-label="Pipeline stages"></div>
+    <div class="detail" id="detail" role="tabpanel"></div>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap">
+    <div class="sec-head rv"><h2 class="disp">How the verdict is decided</h2>
+      <p class="lead">The order matters. This is the logic in the engine's judge, in plain language.</p></div>
+    <div class="logic">
+      <div class="lg rv"><div class="dot2">1</div><div><h3>Does the file declare itself AI-generated?</h3><p>An explicit generator marker (Stable Diffusion's PNG <span class="mono">parameters</span>, IPTC <span class="mono">trainedAlgorithmicMedia</span>, a generator name in <span class="mono">Software</span>) is self-declared provenance. The result is <b style="color:var(--bad)">fake</b> with at least 97% fake probability, and the report says why.</p></div></div>
+      <div class="lg rv"><div class="dot2">2</div><div><h3>Are any trained pixel detectors available?</h3><p>If none can run, the answer is <b style="color:var(--warn)">no verdict</b>. The engine never fabricates a guess from nothing. If only one of the two detectors is available, it uses that one and lists the other as skipped.</p></div></div>
+      <div class="lg rv"><div class="dot2">3</div><div><h3>Fuse the detector scores.</h3><p>The CLIP and frequency scores go through a class-balanced logistic regression. The decision point is shifted so that about 10% of real training images would be called fake, because a false accusation is worse than a miss. Metadata applies only a small nudge.</p></div></div>
+      <div class="lg rv"><div class="dot2">4</div><div><h3>Call it, then grade the call.</h3><p>The verdict is always <b style="color:var(--ok)">likely real</b> or <b style="color:var(--bad)">likely fake</b>. Separately, a confidence level of high, medium or low says how much to trust it, and low-confidence results carry a stated reason.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="conf">
+  <div class="wrap">
+    <div class="sec-head rv"><h2 class="disp">What raises or lowers confidence</h2>
+      <p class="lead">Confidence is the product of these four factors, so weakness in any one pulls it down. Below 0.30 is <i>low</i>, 0.30 to 0.55 is <i>medium</i>, and 0.55 or above is <i>high</i>.</p></div>
+    <div class="factors">
+      <div class="card factor rv"><b>Margin</b><p>How far the fused score is from a coin-flip 50%. A 52% result is barely an answer.</p></div>
+      <div class="card factor rv" style="--d:.07s"><b>Agreement</b><p>Do the detectors tell the same story? Strong disagreement (a spread above 0.6) forces low confidence.</p></div>
+      <div class="card factor rv" style="--d:.14s"><b>Input quality</b><p>Heavy JPEG compression, low resolution (under 256px), or no visible face all discount the result.</p></div>
+      <div class="card factor rv" style="--d:.21s"><b>Coverage</b><p>Did both pixel detectors run? A missing detector lowers confidence and is listed as skipped.</p></div>
+    </div>
+    <div class="callout rv" style="margin-top:28px"><b>Why report it.</b> A result that is 60% likely should not read like 99%. The stated reason, such as “detectors strongly disagree” or “file was recompressed”, tells you what to do next.</div>
+  </div>
+</section>
+
+<section class="sec alt">
+  <div class="wrap">
+    <div class="sec-head rv"><h2 class="disp">What the report contains</h2>
+      <p class="lead">This is the shape of what the engine returns for an image, and the website renders these fields directly. The values are an example, not a real analysis.</p></div>
+    <div class="grid g2" style="align-items:start">
+      <pre class="code rv">{
+  <span class="k">"authenticity"</span>: <span class="n">0.86</span>,
+  <span class="k">"verdict"</span>: <span class="s">"likely_real"</span>,
+  <span class="k">"summary"</span>: <span class="s">"REAL (authenticity 86%). ..."</span>,
+  <span class="k">"assessment"</span>: {
+    <span class="k">"confidence"</span>: <span class="s">"medium"</span>,
+    <span class="k">"agreement"</span>: <span class="n">0.82</span>,
+    <span class="k">"input_quality"</span>: <span class="s">"good"</span>,
+    <span class="k">"detectors_used"</span>: [<span class="s">"clip_probe"</span>, <span class="s">"frequency"</span>],
+    <span class="k">"detectors_skipped"</span>: [{ <span class="k">"name"</span>: <span class="s">"ela"</span>,
+      <span class="k">"reason"</span>: <span class="s">"file was recompressed"</span> }]
+  },
+  <span class="k">"signals"</span>: [{
+    <span class="k">"name"</span>: <span class="s">"frequency"</span>,
+    <span class="k">"score_fake"</span>: <span class="n">0.21</span>,
+    <span class="k">"finding"</span>: <span class="s">"Frequency spectrum looks like that of
+                camera-captured images."</span>
+  }, ...],
+  <span class="k">"caveats"</span>: [<span class="s">"Editing analysis (ELA) is not used ..."</span>]
+}</pre>
+      <div class="prose rv" style="--d:.1s">
+        <p><b>score_fake</b>: 0 means real, 1 means fake, for that one detector.</p>
+        <p><b>finding</b>: a plain-English sentence. If you can't explain a score, you can't defend it.</p>
+        <p><b>heatmap / time_ranges</b>: where in the image, or when in the clip, the detector looked suspicious, when it can say.</p>
+        <p><b>reliable: false</b>: a detector can mark itself “not used”. ELA does this when compression has erased its evidence.</p>
+        <p><b>caveats</b>: limits of <i>this</i> result, shown next to the verdict, never buried.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap">
+    <div class="sec-head rv"><h2 class="disp">Engineering rules</h2></div>
+    <div class="rules">
+      <div class="rule rv"><i>✓</i><div><b>Split by source, never by frame.</b><span>Train and test sets are split by source video or person, so the same face can't appear on both sides. The loader refuses a manifest that leaks.</span></div></div>
+      <div class="rule rv"><i>✓</i><div><b>Report seen vs. unseen fakes.</b><span>A detector's score on generators it trained on flatters it. We always show the unseen column too.</span></div></div>
+      <div class="rule rv"><i>✓</i><div><b>Report false positives on real content.</b><span>Accusing a real photo is the costly error, so its rate is a headline metric.</span></div></div>
+      <div class="rule rv"><i>✓</i><div><b>Every detector returns a finding.</b><span>A score, a plain-English reason, and a heatmap or time range where possible.</span></div></div>
+      <div class="rule rv"><i>✓</i><div><b>Local-first compute.</b><span>The engine picks the best available device at runtime and falls back to CPU, so it runs on an ordinary computer.</span></div></div>
+      <div class="rule rv"><i>✓</i><div><b>Data and checkpoints stay out of git.</b><span>Features are cached to disk, and each detector has a small test.</span></div></div>
+    </div>
+    <p style="margin-top:34px" class="rv"><a class="btn" href="/tools">Meet the detectors</a> &nbsp; <a class="btn ghost" href="/methodology">See the measured results</a></p>
+  </div>
+</section>
+
+<footer id="site-foot"></footer>
+<script src="/static/site.js"></script>
+<script>
+const S = [
+  {t: "Ingest", s: "Route the file", h: "Read the file and route it", p: "The file extension picks the pipeline: image, video or audio. Before any model runs, the engine reads what the file says about itself.",
+   l: ["Images: EXIF camera make and model, the Software tag, PNG text chunks, the IPTC AI source marker, presence of C2PA data, and an estimated JPEG quality.", "Unsupported types are rejected with a clear message instead of failing silently.", "Uploads are stored in a private temporary folder for this session only."],
+   o: ["Metadata facts", "JPEG quality estimate", "Declared-AI flag"], link: ["/tools/metadata", "Metadata & provenance"]},
+  {t: "Prepare", s: "Crop, sample, window", h: "Prepare the evidence", p: "Detectors look at the part of the file where manipulation is most likely, which is usually the face.",
+   l: ["Images: detect the main face with a Haar cascade and crop it. If none is found, analyse the centre and say so in the report.", "Video: sample 16 frames evenly across the clip and crop each face. If it has sound, pull out the audio track.", "Audio: load at 16 kHz mono and slice into 3-second windows."],
+   o: ["Face crop", "16 frames", "3-second windows"], link: ["/tools/video", "Video aggregation"]},
+  {t: "Detect", s: "Run in parallel", h: "Run the detectors", p: "Each detector answers its own question and never sees the others' scores.",
+   l: ["<b>CLIP probe</b>: does the overall look resemble generated faces?", "<b>Frequency</b>: are there upsampling fingerprints in the spectrum?", "<b>ELA</b>: does compression error differ across the image? It is context only and never fused.", "<b>Lip-sync</b>: does mouth movement follow the speech? (video with speech)", "<b>Audio</b>: do 3-second windows sound synthetic?"],
+   o: ["score_fake per detector", "A plain-English finding", "Heatmap or time ranges"], link: ["/tools", "All detectors"]},
+  {t: "Judge", s: "Fuse and calibrate", h: "Fuse into one calibrated probability", p: "The judge turns the detector scores into one probability, tuned so that real content is rarely flagged.",
+   l: ["A class-balanced logistic regression over the detectors' out-of-fold scores, so it never judges scores a detector produced on its own training data.", "The threshold is set so about 10% of real training images would be called fake.", "File metadata adds only a small nudge. Only an explicit AI declaration can override the pixels."],
+   o: ["p(fake)", "likely_real or likely_fake"], link: ["/tools/judge", "The judge"]},
+  {t: "Assess", s: "Grade confidence", h: "Grade the call", p: "A separate step asks how much the call should be trusted, and why.",
+   l: ["Confidence combines margin, detector agreement, input quality and coverage.", "Tiny images, strong disagreement, inconsistent video frames, or a near-50% score force low confidence with a stated reason.", "Detectors that couldn't run are listed as skipped, with the reason."],
+   o: ["high / medium / low", "Reason for low confidence", "Skipped checks"], link: ["/how-it-works#conf", "Confidence, decoded"]},
+  {t: "Explain", s: "Report", h: "Explain the result", p: "The output is built for a human to check, not just to trust.",
+   l: ["A summary sentence that names the strongest evidence.", "Per-detector findings, heatmaps, and flagged frames or audio segments, with timestamps.", "Caveats about <i>this</i> result, plus a stress test that re-scores the image after compression.", "A printable forensic report with the file details and the time of analysis."],
+   o: ["Dashboard", "Forensic report (print to PDF)", "JSON"], link: ["/analyze", "Try it on a file"]},
+];
+let cur = 0;
+function render() {
+  document.getElementById("stages").innerHTML = S.map((x, i) => `<button class="stage-btn${i === cur ? " on" : ""}" role="tab" aria-selected="${i === cur}" data-i="${i}"><span class="n">${i + 1}</span><span><b>${x.t}</b><small>${x.s}</small></span></button>`).join("");
+  const x = S[cur];
+  document.getElementById("detail").innerHTML = `<h3 class="disp">${x.h}</h3><p class="mut">${x.p}</p>
+    <div class="two"><div><h4>What happens</h4><ul>${x.l.map(l => `<li>${l}</li>`).join("")}</ul></div>
+    <div><h4>Produces</h4><div style="display:flex;gap:6px;flex-wrap:wrap">${x.o.map(o => `<span class="chip acc">${o}</span>`).join("")}</div>
+    <p style="margin-top:22px"><a class="btn ghost" href="${x.link[0]}">${x.link[1]} ${window.ARROW}</a></p></div></div>`;
+  document.getElementById("detail").style.animation = "none"; void document.getElementById("detail").offsetWidth; document.getElementById("detail").style.animation = "";
+}
+document.getElementById("stages").onclick = e => { const b = e.target.closest(".stage-btn"); if (b) { cur = +b.dataset.i; render(); } };
+document.addEventListener("keydown", e => { if (e.target.closest(".stage-btn") && (e.key === "ArrowDown" || e.key === "ArrowRight")) { cur = (cur + 1) % S.length; render(); document.querySelector(".stage-btn.on").focus(); } if (e.target.closest(".stage-btn") && (e.key === "ArrowUp" || e.key === "ArrowLeft")) { cur = (cur + S.length - 1) % S.length; render(); document.querySelector(".stage-btn.on").focus(); } });
+render();
+</script>
+</body>
+</html>

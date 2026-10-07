@@ -87,6 +87,13 @@ def analyze_image(path, detectors=None, judge=None, out_dir="out"):
     return rep
 
 
+def lipsync_shift(sig):
+    """Logit nudge from the lip-sync signal: mismatch pushes towards fake (max +1.5), good sync towards real (max -0.4)."""
+    if sig is None or not sig.reliable:
+        return 0.0
+    return 1.5 * (2 * sig.score_fake - 1) if sig.score_fake >= 0.5 else -0.4 * (1 - 2 * sig.score_fake)
+
+
 def sample_frames(path, n=16):
     import cv2
     cap = cv2.VideoCapture(path)
@@ -126,7 +133,27 @@ def analyze_video(path, detectors=None, judge=None, out_dir="out", n_frames=16):
     mean = {k: float(np.mean(v)) for k, v in per.items()}
     frame_mean = np.mean([v for v in per.values()], axis=0)
     incons = float(np.mean([np.std(v) for v in per.values()]))
-    p, verdict, reason = judge.fuse(mean, min_side=min(frames[0][2].size), extra_inconsistency=incons)
+    # Lip-sync is a criterion: a reliable mouth/speech mismatch raises p_fake, good sync lowers it slightly.
+    flagged_audio, flagged_sync, caveats, lip = [], [], [], None
+    wav = os.path.join(out_dir, "audio.wav")
+    os.makedirs(out_dir, exist_ok=True)
+    if os.path.exists(wav):
+        os.remove(wav)  # never reuse the previous run's audio
+    has_audio = extract_audio(path, wav)
+    if has_audio:
+        from .detectors.lipsync import check_video
+        try:
+            lip = check_video(path, wav)
+        except Exception as e:  # a lip-sync failure must never break the pixel verdict
+            from .detectors.lipsync import _unchecked
+            lip = _unchecked(f"the check failed ({e})")
+            caveats.append(f"Lip-sync check failed: {e}")
+    else:
+        from .detectors.lipsync import _unchecked
+        lip = _unchecked("the video has no audio track")
+        caveats.append("No audio track, so lip-sync and voice checks were skipped.")
+    shift = lipsync_shift(lip)
+    p, verdict, reason = judge.fuse(mean, min_side=min(frames[0][2].size), extra_inconsistency=incons, meta_shift=shift)
     order = np.argsort(-frame_mean)[:3]
     flagged_frames = [{"frame": frames[i][0], "time_s": round(frames[i][1], 2),
                        "score_fake": round(float(frame_mean[i]), 3)} for i in order]
@@ -140,16 +167,19 @@ def analyze_video(path, detectors=None, judge=None, out_dir="out", n_frames=16):
     sigs, _ = run_image_detectors(top, [d for d in detectors if d.name == "ela"], None)
     if sigs and sigs[0].heatmap is not None:
         signals[-1]["heatmap"] = overlay(top, sigs[0].heatmap, os.path.join(out_dir, "top_frame_ela.png"))
-    flagged_audio = []
-    wav = os.path.join(out_dir, "audio.wav")
-    os.makedirs(out_dir, exist_ok=True)
-    if os.path.exists("checkpoints/audio.joblib") and extract_audio(path, wav):
+    if lip is not None:
+        signals.append(lip.to_dict())
+        flagged_sync = lip.time_ranges
+        if lip.reliable and lip.score_fake >= 0.5:
+            caveats.append("Possible lip-sync manipulation: mouth movement does not match the speech.")
+    if has_audio and os.path.exists("checkpoints/audio.joblib"):
         from .detectors.audio import AudioDetector, load_audio
         a = AudioDetector().predict_audio(load_audio(wav))
         signals.append(a.to_dict())
         flagged_audio = a.time_ranges
     rep = build_report(p, verdict, reason, signals,
-                       {"frames": flagged_frames, "audio_seconds": [list(map(float, r)) for r in flagged_audio]})
+                       {"frames": flagged_frames, "audio_seconds": [list(map(float, r)) for r in flagged_audio],
+                        "lipsync_seconds": [list(map(float, r)) for r in flagged_sync]}, caveats=caveats)
     dump(rep, os.path.join(out_dir, "report.json"))
     return rep
 
