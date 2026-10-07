@@ -214,3 +214,23 @@ def test_lipsync_status_in_report():
         rep = build_report(0.2, "likely_real", "", [sig.to_dict()])
         assert rep["lipsync"]["status"] == status and "Lip-sync:" in rep["summary"]
     assert "lipsync" not in build_report(0.2, "likely_real", "", [])
+
+
+def test_consistency_detector_flags_pasted_face_region(tmp_path):
+    """Smooth-noise 'camera' texture everywhere vs one region with different noise: the outlier map must light up there."""
+    from emet_lens.detectors.consistency import ConsistencyDetector, patch_stats, _robust_anomaly
+    rng = np.random.RandomState(0)
+    base = np.clip(128 + 40 * np.sin(np.linspace(0, 6, 256))[None, :] + rng.randn(256, 256) * 4, 0, 255).astype(np.float32)
+    pasted = base.copy()
+    pasted[96:192, 96:192] = np.clip(base[96:192, 96:192] * 0.2 + 100 + rng.randn(96, 96) * 1.0, 0, 255)  # different noise level
+    for img, expect_hot in ((base, False), (pasted, True)):
+        F, t = patch_stats(img)
+        a = _robust_anomaly(F.reshape(-1, F.shape[-1]), t.reshape(-1)).reshape(F.shape[:2])
+        inner, outer = a[6:11, 6:11].mean(), np.r_[a[:3].ravel(), a[-3:].ravel()].mean()
+        assert (inner > 2 * outer) == expect_hot
+    det = ConsistencyDetector(ckpt=str(tmp_path / "c.joblib"))
+    X = np.vstack([det.features(Image.fromarray(base.astype(np.uint8)).convert("RGB")) for _ in range(4)])
+    det.fit(np.vstack([X, X + 1]), np.array([0, 1] * 4))
+    sig = det.predict(Image.fromarray(pasted.astype(np.uint8)).convert("RGB"))
+    assert 0 <= sig.score_fake <= 1 and sig.finding and sig.name == "consistency"
+    assert sig.heatmap is not None and sig.heatmap.shape[0] > 4   # localisation map is produced

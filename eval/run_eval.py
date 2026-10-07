@@ -62,6 +62,11 @@ def make_scorer(name, degrade=None):
     if name == "dummy":
         d = DummyDetector()
         return lambda p: d.predict(load_crop(p, deg)).score_fake
+    if name == "consistency":
+        from emet_lens.detectors.consistency import ConsistencyDetector
+        d = ConsistencyDetector()
+        d.load()
+        return lambda p: d.predict(deg(Image.open(p).convert("RGB")) if deg else Image.open(p)).score_fake
     if name in ("clip_probe", "frequency", "ela"):
         from emet_lens.detectors.clip_probe import CLIPProbe
         from emet_lens.detectors.frequency import FrequencyDetector

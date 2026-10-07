@@ -206,7 +206,7 @@ const TONELBL = {ok:"Authentic", warn:"Uncertain", bad:"Suspicious"};
 const NAMES = {
   clip_probe:["Image content","CLIP probe","clip-probe"], frequency:["Frequency spectrum","Fourier artefacts","frequency"],
   ela:["Editing traces","Error-level analysis","ela"], metadata:["File metadata","EXIF / provenance","metadata"],
-  audio:["Audio authenticity","wav2vec2","audio"], lipsync:["Lip-sync","Mouth vs speech","lipsync"], frame_consistency:["Frame consistency","Across sampled frames","video"],
+  audio:["Audio authenticity","wav2vec2","audio"], lipsync:["Lip-sync","Mouth vs speech","lipsync"], consistency:["Face vs surroundings","Noise consistency","video"], frame_consistency:["Frame consistency","Across sampled frames","video"],
 };
 const nameOf = n => NAMES[n] || [n.replace(/_/g, " "), "", ""];
 const ICON = {

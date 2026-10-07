@@ -12,8 +12,9 @@ def load_crop(path, degrade=None):
     return prep_crop(img)[0]
 
 
-def cached_features(det, paths, tag="clean", degrade=None, cache_dir="cache"):
-    """Per-image features, cached on disk by (detector, tag, path)."""
+def cached_features(det, paths, tag="clean", degrade=None, cache_dir="cache", loader=None):
+    """Per-image features, cached on disk by (detector, tag, path). loader(path, degrade) -> image; default is the face crop."""
+    loader = loader or load_crop
     os.makedirs(cache_dir, exist_ok=True)
     out = []
     for p in paths:
@@ -22,7 +23,7 @@ def cached_features(det, paths, tag="clean", degrade=None, cache_dir="cache"):
         if os.path.exists(f):
             out.append(np.load(f))
         else:
-            v = det.features(load_crop(p, degrade))
+            v = det.features(loader(p, degrade))
             np.save(f, v)
             out.append(v)
     return np.stack(out)

@@ -5,7 +5,7 @@ Image / video / audio in → authenticity score, a definite verdict (`likely_rea
 It is a prototype: read the **Results** and **Limitations** sections before trusting any verdict.
 
 ## Contents
-0. [How it works, in plain words](#how-it-works-in-plain-words) · 1. [Stack](#stack) · 2. [Setup](#setup) · 3. [Running](#running) · 4. [How the verdict is made](#how-the-verdict-is-made)
+0. [How it works, in plain words](#how-it-works-in-plain-words) · [Our own detector (TCNC)](#our-own-detector-texture-conditioned-noise-consistency-tcnc) · 1. [Stack](#stack) · 2. [Setup](#setup) · 3. [Running](#running) · 4. [How the verdict is made](#how-the-verdict-is-made)
 5. [Detectors](#detectors) · 6. [Output](#output) · 7. [Data](#data) · 8. [Workflow](#workflow)
 9. [Results](#results) · 10. [Tests](#tests) · 11. [Project layout](#project-layout) · 12. [Status](#status) · 13. [Limitations](#limitations) · 14. [Ethics](#ethics)
 
@@ -92,7 +92,39 @@ AI generators and newer fakes can do worse, so treat the output as a clue, not p
 - Blink and pulse checks.
 - Finding the exact edited area. ELA's heat map is only a hint.
 
-## Stack
+## Our own detector: texture-conditioned noise consistency (TCNC)
+**Idea.** A real photo comes from one camera and one processing chain. How noisy and grainy a patch is depends on how
+detailed that patch is (smooth skin is quiet, hair is busy) and on nothing else. A swapped, inpainted or re-generated face
+comes from a different process, so its fine noise sits off that pattern. TCNC checks the image against itself, so it needs no
+knowledge of any particular generator, and resolution and compression changes mostly cancel out of the comparison.
+
+**Steps** (`emet_lens/detectors/consistency.py`, about 150 lines, no neural network):
+1. Subtract a blurred copy to keep only the fine detail (the "residual").
+2. Cut the image into 32 px patches and measure six things per patch: noise strength, how heavy-tailed the noise is,
+   how correlated neighbouring pixels are (three directions), and how strong the JPEG 8x8 block grid is.
+3. For this image only, work out how each measure normally changes with how detailed the patch is (a quadratic fit).
+   Subtract that, so differences caused by content are gone and only the unusual part is left.
+4. Compare the face patches with the patches around the face. A second, face-free score drops the worst 20% of patches,
+   refits, and marks the outliers. That outlier map is the heat map.
+5. Ten numbers go into a small gradient-boosted classifier (depth 3). Trained with `python scripts/train_consistency.py`.
+
+**What was measured** (same held-out split as the other detectors; AUC unless noted):
+
+| detector | FPR on real | face swap (insight) | inpainting (unseen) | text2img | StyleGAN |
+|---|---|---|---|---|---|
+| TCNC alone, clean | 33% at its default cut-off | 0.75 | 0.62 | 0.65 | 0.63 |
+| TCNC alone, JPEG 75 | 31% | 0.77 | 0.65 | 0.68 | 0.49 |
+| TCNC alone, downscale 0.5 | 42% | 0.58 | 0.52 | 0.54 | 0.54 |
+| CLIP + frequency (current judge inputs) | 6.6% | 0.881 | 0.858 | 0.868 | 0.929 |
+| CLIP + frequency + TCNC (one experiment) | 7.6% | 0.900 | 0.867 | 0.878 | 0.932 |
+
+**Honest reading.** On its own it is weak, and shrinking the image kills it. It works best where the idea says it should, on
+face swaps, and as a third input it adds about 0.02 AUC there and 0.01 overall. With only 124 to 224 test images per fake type
+that gain is inside the noise, so it is **not fused into the verdict**. It is shown as a heat map showing where the
+image is inconsistent, which is the part the CLIP and frequency checks cannot give. Fully synthetic images are consistent
+with themselves, so by design it does not catch those. To decide whether to fuse it, test it on a bigger set of
+face-swap videos (FaceForensics++) and retrain the judge.
+
 - **Python 3.11** venv via `uv`; **PyTorch** on `mps` (Apple GPU) else `cpu`. Never CUDA (`emet_lens/device.py`).
   `PYTORCH_ENABLE_MPS_FALLBACK=1` is set automatically.
 - **Models:** frozen CLIP ViT-B/32 (`openai/clip-vit-base-patch32`) image features; wav2vec2-base audio features (layer 6, mean/std pooled).
@@ -149,6 +181,7 @@ Every detector returns a `Signal`: `score_fake`, a plain-English `finding`, and 
 | Frequency (`frequency.py`) | radial log-power-spectrum profile (32 bins) → scaler + LR; looks for generator spectral fingerprints | score | yes |
 | ELA / double-JPEG (`ela.py`) | re-saves at q90 and maps error level differences, smoothed; p99 sigmoid score | heatmap | no (visual aid) |
 | Audio (`audio.py`) | wav2vec2-base layer-6 mean/std features over 3 s windows → LR | flagged time ranges | audio files and video soundtracks |
+| Consistency, TCNC (`consistency.py`) | our own detector: compares the noise and texture of the face with the rest of the same image | heatmap of odd patches | no (context only, like ELA) |
 | Lip-sync (`lipsync.py`) | correlates mouth-region motion (fixed box under the median Haar face) with audio loudness within ±0.25 s; training-free | flagged time ranges (`lipsync_seconds`) | nudges the judge (mismatch up to +1.5 logit towards fake, good sync −0.4); only when reliable |
 | Video aggregation (`pipeline.analyze_video`) | samples frames, scores each, aggregates; frame-score inconsistency feeds confidence | flagged frames | yes (ELA excluded) |
 | Metadata (`metadata.py`) | format, size, camera, software, EXIF presence, AI markers, C2PA, JPEG quality | finding | small logit shift only |
@@ -221,7 +254,7 @@ Without `--augment` (earlier run): FPR 6.6%, detect rate 52–73% by type. Audio
 On the author's own 9 casual phone photos the model called 6 real and 3 fake, but their true labels are unknown, so that is not an accuracy figure.
 
 ## Tests
-`pytest` runs 13 fast tests in `tests/test_all.py` (≈2 s). They use synthetic images and stubbed features, so they check
+`pytest` runs 15 fast tests in `tests/test_all.py` (about 3 s). They use synthetic images and stubbed features, so they check
 behaviour and wiring, not detection accuracy (that comes from `eval/`).
 
 | Test | Checks |
@@ -239,6 +272,8 @@ behaviour and wiring, not detection accuracy (that comes from `eval/`).
 | `test_lipsync_synced_vs_mismatched_series` | synced series score real, unrelated series score fake with time ranges; silent / short / no-face input is marked unreliable |
 | `test_lipsync_shift_direction` | mismatch pushes towards fake, sync towards real, unreliable does nothing |
 | `test_lipsync_video_end_to_end` | synthetic talking video (real face photo, mouth region flickers with the audio): matching audio scores below 0.5, unrelated audio above 0.5 |
+| `test_lipsync_status_in_report` | the report carries an explicit IN SYNC / OUT OF SYNC / NOT CHECKED status and the summary mentions it |
+| `test_consistency_detector_flags_pasted_face_region` | TCNC's outlier map lights up on a region with different noise and stays quiet on a clean image; it trains and returns a score, finding and heat map |
 
 Not covered: full video analysis with the trained detectors, `degrade.py`, the Gradio app and web frontend, and the real CLIP / wav2vec2 models.
 

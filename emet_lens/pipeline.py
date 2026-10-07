@@ -14,6 +14,7 @@ from .report import build_report, overlay, dump
 if os.path.isdir(os.path.expanduser("~/.cache/huggingface/hub/models--openai--clip-vit-base-patch32")):
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
+CONTEXT_ONLY = ("ela", "consistency")  # shown as evidence (heat maps) but not fused into the verdict
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 VID_EXT = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 AUD_EXT = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
@@ -29,8 +30,9 @@ def _load_default_detectors():
     from .detectors.clip_probe import CLIPProbe
     from .detectors.frequency import FrequencyDetector
     from .detectors.ela import ELADetector
+    from .detectors.consistency import ConsistencyDetector
     ds = []
-    for cls in (CLIPProbe, FrequencyDetector, ELADetector):
+    for cls in (CLIPProbe, FrequencyDetector, ELADetector, ConsistencyDetector):
         d = cls()
         if d.needs_training:
             try:
@@ -42,11 +44,12 @@ def _load_default_detectors():
 
 
 def run_image_detectors(img, detectors, path=None):
-    """Detectors see the face crop (or center crop); ELA runs on the full image so edits aren't resampled away."""
+    """Detectors see the face crop (or center crop); ELA and consistency run on the full image so edits aren't resampled away."""
     crop, box = prep_crop(img)
     sigs = []
     for d in detectors:
-        sigs.append(d.predict(img, path=path) if d.name == "ela" else d.predict(crop))
+        sigs.append(d.predict(img, path=path) if d.name == "ela" else d.predict(img) if d.name == "consistency"
+                    else d.predict(crop))
     return sigs, box
 
 
@@ -56,13 +59,15 @@ def analyze_image(path, detectors=None, judge=None, out_dir="out"):
     judge = Judge().load() if judge is None else judge
     meta = read_metadata(path)
     sigs, box = run_image_detectors(img, detectors, path)
-    pixel = {s.name: s.score_fake for s in sigs if s.reliable and s.name != "ela"}
+    pixel = {s.name: s.score_fake for s in sigs if s.reliable and s.name not in CONTEXT_ONLY}
     msig, shift = metadata_signal(meta)
     min_side = min(img.size)
     p, verdict, reason = judge.fuse(pixel, min_side=min_side, meta_shift=shift, declared_ai=msig.decisive)
     skipped, caveats = [], []
     for s in sigs:
-        if not s.reliable:
+        if not s.reliable and s.name == "consistency":
+            skipped.append({"name": s.name, "reason": "no clear face to compare with its surroundings"})
+        elif not s.reliable:
             q = meta["jpeg_quality"]
             skipped.append({"name": s.name, "reason": "file was recompressed" + (f" (JPEG ~{q:.0f})" if q else "")})
             caveats.append("Editing analysis (ELA) is not used for the verdict: this file has been recompressed"
@@ -125,7 +130,7 @@ def analyze_video(path, detectors=None, judge=None, out_dir="out", n_frames=16):
         raise ValueError("could not read any frames")
     per = {}  # detector -> [score per frame]
     heats = {}
-    fuse_dets = [d for d in detectors if d.name != "ela"]  # video frames are always re-encoded: ELA is context only
+    fuse_dets = [d for d in detectors if d.name not in CONTEXT_ONLY]  # video frames are always re-encoded: context-only detectors are not fused
     for _, _, im in frames:
         sigs, _ = run_image_detectors(im, fuse_dets)
         for s in sigs:

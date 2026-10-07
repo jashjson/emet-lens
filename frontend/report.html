@@ -49,7 +49,7 @@ ul{margin:6px 0;padding-left:20px}
 <div id="out"></div>
 <script>
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const NAMES = {clip_probe:"Image content (CLIP probe)", frequency:"Frequency spectrum", ela:"Editing traces (ELA)", metadata:"File metadata", audio:"Audio authenticity", lipsync:"Lip-sync", frame_consistency:"Frame consistency"};
+const NAMES = {clip_probe:"Image content (CLIP probe)", frequency:"Frequency spectrum", ela:"Editing traces (ELA)", metadata:"File metadata", audio:"Audio authenticity", lipsync:"Lip-sync", consistency:"Face vs surroundings", frame_consistency:"Frame consistency"};
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const tone = p => p < .35 ? ["ok", "Authentic"] : p < .65 ? ["warn", "Uncertain"] : ["bad", "Suspicious"];
 let hist = []; try { hist = JSON.parse(localStorage.getItem("emet_lens_history_v1")) || []; } catch {}
