@@ -67,7 +67,7 @@ def status():
     """Live, factual state of the engine: what is trained, what data it saw. Nothing here is invented."""
     from emet_lens.device import get_device
     ck = {n: os.path.exists(os.path.join(REPO, "checkpoints", f"{n}.joblib"))
-          for n in ("clip_probe", "frequency", "judge", "audio")}
+          for n in ("clip_probe", "frequency", "judge", "audio", "consistency")}
     rows = _manifest()
     by = {}
     for r in rows:

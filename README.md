@@ -5,7 +5,7 @@ Image / video / audio in → authenticity score, a definite verdict (`likely_rea
 It is a prototype: read the **Results** and **Limitations** sections before trusting any verdict.
 
 ## Contents
-0. [How it works, in plain words](#how-it-works-in-plain-words) · [Our own detector (TCNC)](#our-own-detector-texture-conditioned-noise-consistency-tcnc) · 1. [Stack](#stack) · 2. [Setup](#setup) · 3. [Running](#running) · 4. [How the verdict is made](#how-the-verdict-is-made)
+0. [How it works, in plain words](#how-it-works-in-plain-words) · [TCNC](#tcnc-texture-conditioned-noise-consistency) · 1. [Stack](#stack) · 2. [Setup](#setup) · 3. [Running](#running) · 4. [How the verdict is made](#how-the-verdict-is-made)
 5. [Detectors](#detectors) · 6. [Output](#output) · 7. [Data](#data) · 8. [Workflow](#workflow)
 9. [Results](#results) · 10. [Tests](#tests) · 11. [Project layout](#project-layout) · 12. [Status](#status) · 13. [Limitations](#limitations) · 14. [Ethics](#ethics)
 
@@ -92,7 +92,7 @@ AI generators and newer fakes can do worse, so treat the output as a clue, not p
 - Blink and pulse checks.
 - Finding the exact edited area. ELA's heat map is only a hint.
 
-## Our own detector: texture-conditioned noise consistency (TCNC)
+## TCNC: texture-conditioned noise consistency
 **Idea.** A real photo comes from one camera and one processing chain. How noisy and grainy a patch is depends on how
 detailed that patch is (smooth skin is quiet, hair is busy) and on nothing else. A swapped, inpainted or re-generated face
 comes from a different process, so its fine noise sits off that pattern. TCNC checks the image against itself, so it needs no
@@ -181,7 +181,7 @@ Every detector returns a `Signal`: `score_fake`, a plain-English `finding`, and 
 | Frequency (`frequency.py`) | radial log-power-spectrum profile (32 bins) → scaler + LR; looks for generator spectral fingerprints | score | yes |
 | ELA / double-JPEG (`ela.py`) | re-saves at q90 and maps error level differences, smoothed; p99 sigmoid score | heatmap | no (visual aid) |
 | Audio (`audio.py`) | wav2vec2-base layer-6 mean/std features over 3 s windows → LR | flagged time ranges | audio files and video soundtracks |
-| Consistency, TCNC (`consistency.py`) | our own detector: compares the noise and texture of the face with the rest of the same image | heatmap of odd patches | no (context only, like ELA) |
+| Consistency, TCNC (`consistency.py`) | compares the noise and texture of the face with the rest of the same image | heatmap of odd patches | no (context only, like ELA) |
 | Lip-sync (`lipsync.py`) | correlates mouth-region motion (fixed box under the median Haar face) with audio loudness within ±0.25 s; training-free | flagged time ranges (`lipsync_seconds`) | nudges the judge (mismatch up to +1.5 logit towards fake, good sync −0.4); only when reliable |
 | Video aggregation (`pipeline.analyze_video`) | samples frames, scores each, aggregates; frame-score inconsistency feeds confidence | flagged frames | yes (ELA excluded) |
 | Metadata (`metadata.py`) | format, size, camera, software, EXIF presence, AI markers, C2PA, JPEG quality | finding | small logit shift only |

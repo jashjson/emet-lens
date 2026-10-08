@@ -20,6 +20,7 @@ from ..base import Detector, Signal
 from ..faces import crop_face
 
 WIN, STRIDE, MAX_SIDE, K = 32, 16, 512, 6
+PART_NAMES = ["noise_strength", "noise_spikiness", "pixel_agreement_h", "pixel_agreement_v", "pixel_agreement_d", "jpeg_grid"]
 EPS = 1e-6
 
 
@@ -84,6 +85,7 @@ class ConsistencyDetector(Detector):
     def __init__(self, ckpt="checkpoints/consistency.joblib"):
         self.ckpt = ckpt
         self.clf = None
+        self.ref = None
 
     def analyse(self, img):
         """Returns (feature vector [10], anomaly grid [gh,gw] or None)."""
@@ -117,11 +119,17 @@ class ConsistencyDetector(Detector):
     def fit(self, X, y):
         self.clf = HistGradientBoostingClassifier(max_depth=3, max_iter=150, learning_rate=0.05,
                                                   class_weight="balanced", random_state=0).fit(X, y)
-        joblib.dump(self.clf, self.ckpt)
+        X, y = np.asarray(X), np.asarray(y)
+        real, real_face = X[y == 0], X[(y == 0) & (X[:, 9] == 1)]
+        # What real training images look like, so the UI can show a measurement next to a typical value.
+        self.ref = {"gap_p50": float(np.median(real_face[:, 6])), "gap_p90": float(np.quantile(real_face[:, 6], 0.9)),
+                    "outlier_p50": float(np.median(real[:, 7])), "outlier_p90": float(np.quantile(real[:, 7], 0.9))}
+        joblib.dump({"clf": self.clf, "ref": self.ref}, self.ckpt)
 
     def load(self):
         if self.clf is None:
-            self.clf = joblib.load(self.ckpt)
+            obj = joblib.load(self.ckpt)
+            self.clf, self.ref = (obj["clf"], obj.get("ref")) if isinstance(obj, dict) else (obj, None)
 
     def predict(self, img):
         self.load()
@@ -136,4 +144,9 @@ class ConsistencyDetector(Detector):
             f = "Noise and texture inside the face do not match the rest of the image, typical of a swapped or re-generated face."
         else:
             f = "Noise and texture are consistent between the face and its surroundings."
-        return Signal(self.name, p, f, heatmap=heat, reliable=vec[9] == 1)
+        data = {"face_found": bool(vec[9]), "outlier_p95": round(float(vec[7]), 3), "outlier_top5": round(float(vec[8]), 3),
+                "reference": self.ref}
+        if vec[9]:
+            data["face_gap"] = round(float(vec[6]), 3)
+            data["parts"] = {n: round(float(v), 2) for n, v in zip(PART_NAMES, vec[:6])}
+        return Signal(self.name, p, f, heatmap=heat, reliable=vec[9] == 1, data=data)

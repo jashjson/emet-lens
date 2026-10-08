@@ -63,7 +63,7 @@ function index(st) {
         <h3 style="margin-top:18px;font-size:1.2rem">${t.name}</h3><p class="tg" style="margin-top:6px">${t.tag}</p><p>${t.summary}</p>
         <div class="meta"><span class="chip">${t.media}</span><span class="chip ${t.role.startsWith("Decides") || t.role.startsWith("Makes") ? "acc" : ""}">${t.role}</span></div>
         <div class="go">Read more ${ARROW}</div></a>`).join("")}</div>
-      <div class="callout rv" style="margin-top:34px"><b>How they fit together.</b> The CLIP probe and the frequency detector produce the scores, and the judge combines them. ELA and metadata add context. Video and audio reuse the same parts. See the <a href="/how-it-works" style="color:var(--accent)">pipeline</a>.</div></div></section>`;
+      <div class="callout rv" style="margin-top:34px"><b>How they fit together.</b> The CLIP probe and the frequency detector produce the scores, and the judge combines them. ELA, the face-vs-surroundings check (TCNC) and metadata add context. Video and audio reuse the same parts. See the <a href="/how-it-works" style="color:var(--accent)">pipeline</a>.</div></div></section>`;
   document.dispatchEvent(new Event("rescan")); reveal();
 }
 

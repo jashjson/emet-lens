@@ -21,6 +21,9 @@ STEPS = [  # (label, detector, degradation)
     ("judge/jpeg75", "judge", "jpeg75"),
     ("judge/jpeg50", "judge", "jpeg50"),
     ("judge/down0.5", "judge", "down0.5"),
+    ("consistency/clean", "consistency", None),
+    ("consistency/jpeg75", "consistency", "jpeg75"),
+    ("consistency/down0.5", "consistency", "down0.5"),
 ]
 
 
@@ -40,7 +43,11 @@ def main():
            "n_test_fake": int((test.label == "fake").sum()),
            "train_fake_types": sorted(set(df[(df.split == "train") & (df.label == "fake")]["type"])),
            "results": {}}
+    if os.path.exists(OUT) and "--force" not in os.sys.argv:  # keep finished steps, run only what is missing
+        out["results"] = json.load(open(OUT)).get("results", {})
     for label, det, deg in STEPS:
+        if label in out["results"]:
+            continue
         t0 = time.time()
         print("running", label, flush=True)
         res = evaluate(df, make_scorer(det, deg))

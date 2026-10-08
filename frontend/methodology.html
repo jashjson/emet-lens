@@ -102,7 +102,7 @@ python -m frontend.server                  <span class="mut"># this website</spa
 const $ = id => document.getElementById(id);
 const pct = (x, d = 1) => (x * 100).toFixed(d) + "%";
 const DESC = {real: "Real photographs", stylegan: "StyleGAN faces", text2img: "Text-to-image faces", insight: "Face swaps (InsightFace)", inpainting: "Inpainting edits"};
-const NM = {"judge/clean": "Judge (fused)", "clip_probe/clean": "CLIP probe alone", "frequency/clean": "Frequency alone"};
+const NM = {"judge/clean": "Judge (fused)", "clip_probe/clean": "CLIP probe alone", "frequency/clean": "Frequency alone", "consistency/clean": "Face vs surroundings (TCNC) alone"};
 
 Promise.all([getStatus(), fetch("/api/eval").then(r => r.json()).catch(() => ({available: false}))]).then(([st, ev]) => {
   data(st); results(ev, st);
@@ -135,10 +135,10 @@ function results(ev, st) {
     return `<div class="brow"><span>${DESC[t] || t}${un ? ' <span class="chip warn" style="margin-left:6px">unseen</span>' : ""}</span><div class="meter"><i style="width:${v * 100}%;background:${v > .6 ? "var(--ok)" : v > .4 ? "var(--warn)" : "var(--bad)"}"></i></div><span class="num">${pct(v, 0)}</span></div>`; }).join("");
 
   $("resBox").innerHTML = `<div class="tbl"><table><thead><tr><th>Detector</th><th class="r">Real flagged (FPR)</th><th class="r">Fakes caught · seen</th><th class="r">AUC · seen</th><th class="r">Fakes caught · unseen</th><th class="r">AUC · unseen</th></tr></thead><tbody>
-    ${row("judge/clean", true)}${row("clip_probe/clean")}${row("frequency/clean")}</tbody></table></div>
+    ${row("judge/clean", true)}${row("clip_probe/clean")}${row("frequency/clean")}${row("consistency/clean")}</tbody></table></div>
     <p class="note">Test split, threshold 0.5, clean images. Seen: n=${j.seen.n_fake} fakes. Unseen: n=${j.unseen.n_fake}. Real: n=${j.n_real}. Run ${ev.generated_at}. AUC is the chance a random fake scores higher than a random real image (0.5 = guessing, 1.0 = perfect).</p>
     <h3 style="margin:34px 0 4px;font-size:1.1rem">Fakes caught, by generator (fused judge)</h3><div style="margin-top:8px">${byType}</div>
-    <div class="callout" style="margin-top:26px"><b>Reading this table.</b> The frequency detector alone is weak (it flags many real images) and the CLIP probe does most of the work. The judge gives up some recall for a much lower false-positive rate, which is what it is tuned for. Performance on the one unseen generator is lower than on the seen ones.</div>`;
+    <div class="callout" style="margin-top:26px"><b>Reading this table.</b> The frequency detector alone is weak (it flags many real images) and the CLIP probe does most of the work. The face-vs-surroundings check (TCNC) is weaker still on its own, so it only draws a heat map and does not vote. The judge gives up some recall for a much lower false-positive rate, which is what it is tuned for. Performance on the one unseen generator is lower than on the seen ones.</div>`;
 
   const keys = [["judge/clean", "Original"], ["judge/jpeg75", "JPEG quality 75"], ["judge/jpeg50", "JPEG quality 50"], ["judge/down0.5", "Downscaled 50%"]].filter(([k]) => R[k]);
   const base = R["judge/clean"], worst = Math.max(...keys.map(([k]) => R[k].fpr_real));

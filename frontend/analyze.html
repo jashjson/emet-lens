@@ -122,6 +122,7 @@ body.busy .brand svg{animation:spin 1.6s linear infinite}
 .why li::before{content:counter(w);width:22px;height:22px;border-radius:50%;background:var(--s2);border:1px solid var(--line2);display:grid;place-items:center;font-size:.76rem;color:var(--mut)}
 .why li:nth-child(2){animation-delay:.1s}.why li:nth-child(3){animation-delay:.2s}.why li:nth-child(4){animation-delay:.3s}.why li:nth-child(5){animation-delay:.4s}
 .limits{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:.85rem;color:var(--mut)} .limits b{color:var(--warn);font-weight:600} .limits ul{margin:6px 0 0;padding-left:18px}
+.factor{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)} .factor .fh{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .factor .badge{padding:3px 10px} .factor .own{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);border:1px solid var(--accent);border-radius:5px;padding:2px 7px;font-weight:650}
 .mom{display:grid;grid-template-columns:70px 1fr 44px;gap:12px;align-items:center;padding:6px 0;font-size:.88rem}
 
 /* ground truth + stress test */
@@ -371,8 +372,32 @@ function renderResult(rep, name) {
   const gt = rep.ground_truth;
 
   const media = kind === "image" ? `<img src="${rep.media_url}" alt="Analyzed image">` : kind === "video" ? `<video src="${rep.media_url}" controls></video>` : `<audio src="${rep.media_url}" controls></audio>`;
-  const toggle = heats.length ? `<div class="seg" role="group"><button class="on" data-v="orig">${kind === "video" ? "Video" : "Original"}</button><button data-v="heat">Heatmap</button></div>` : "";
+  const toggle = heats.length ? `<div class="seg" role="group"><button class="on" data-v="orig">${kind === "video" ? "Video" : "Original"}</button>${heats.map((h, i) => `<button data-v="h${i}">${heats.length > 1 ? esc(nameOf(h.name)[0]) : "Heatmap"}</button>`).join("")}</div>` : "";
 
+  const skipWhy = n => { const k = a?.detectors_skipped?.find(x => x.name === n)?.reason;
+    return (k ? k[0].toUpperCase() + k.slice(1) + ". " : "It isn't reliable for this file. ") + (n === "ela" ? "Error-level analysis only works on lightly compressed JPEGs (quality 88 or higher, at least 256 px). Messaging apps and social media recompress images and erase the traces it reads. Even when it runs, it is a visual aid and never votes on the verdict." : ""); };
+  const tc = rep.signals.find(s => s.name === "consistency");
+  const tcFactor = tc ? (() => { const off = tc.reliable === false, tn = tone(tc.score_fake);
+    return `<div class="factor"><div class="fh"><span class="own">TCNC</span><b>Face vs surroundings (TCNC)</b><span class="badge ${off ? "off" : tn}">${off ? "Not used" : TONELBL[tn]}</span>${off ? "" : `<span class="num mut">fake score ${tc.score_fake.toFixed(2)}</span>`}</div>
+      <div class="mut" style="font-size:.84rem;margin-top:6px">${off ? esc(skipWhy("consistency") || "No clear face to compare.") : esc(tc.finding)} ${heats.some(h => h.name === "consistency") ? "Its heat map is under the Heatmap buttons above." : ""} Context only: it does not change the verdict. <a href="/tools/consistency">How it works →</a></div></div>`; })() : "";
+  const PARTS = {noise_strength: "Noise strength", noise_spikiness: "Noise spikiness", pixel_agreement_h: "Pixel agreement (horizontal)", pixel_agreement_v: "Pixel agreement (vertical)", pixel_agreement_d: "Pixel agreement (diagonal)", jpeg_grid: "JPEG block grid"};
+  const tcPanel = tc && tc.data ? (() => { const d = tc.data, ref = d.reference || {}, off = tc.reliable === false, tn = tone(tc.score_fake);
+    const tile = (k, v, sub, col) => `<div><div class="mut" style="font-size:.78rem">${k}</div><div class="num" style="font-weight:600;font-size:1.25rem;color:${col || "var(--fg)"}">${v}</div><div class="mut" style="font-size:.74rem">${sub}</div></div>`;
+    const hi = (v, r) => r == null ? "var(--fg)" : v > r ? "var(--warn)" : "var(--ok)";
+    const bar = (k, v) => { const w = Math.min(Math.abs(v) / 3, 1) * 50, odd = Math.abs(v) > 2;
+      return `<div style="display:grid;grid-template-columns:190px 1fr 46px;gap:12px;align-items:center;font-size:.85rem;padding:3px 0"><span>${esc(PARTS[k] || k)}</span>
+        <div style="position:relative;height:8px;background:var(--s2);border-radius:4px"><i style="position:absolute;top:0;bottom:0;border-radius:4px;background:${odd ? "var(--warn)" : "var(--accent)"};${v >= 0 ? `left:50%;width:${w}%` : `right:50%;width:${w}%`}"></i><b style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--line2)"></b></div>
+        <span class="num mut">${v >= 0 ? "+" : ""}${v.toFixed(1)}</span></div>`; };
+    return `<div class="panel fade"><h2>Face vs surroundings <span class="factor"><span class="own" style="border:1px solid var(--accent);color:var(--accent);border-radius:5px;padding:2px 7px;font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;margin-left:8px">TCNC</span></span></h2>
+      <div style="display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap">
+        <span class="badge ${off ? "off" : tn}" style="padding:7px 16px;font-size:.9rem">${off ? "Not used" : TONELBL[tn]}</span>
+        ${tile("Classifier score", off ? "—" : tc.score_fake.toFixed(2), "0 = consistent, 1 = inconsistent")}
+        ${d.face_gap != null ? tile("Face–surroundings gap", d.face_gap.toFixed(2), ref.gap_p90 != null ? `9 in 10 real images are below ${ref.gap_p90.toFixed(2)}` : "", hi(d.face_gap, ref.gap_p90)) : ""}
+        ${tile("Odd patches anywhere", d.outlier_p95.toFixed(2), ref.outlier_p90 != null ? `9 in 10 real images are below ${ref.outlier_p90.toFixed(2)}` : "", hi(d.outlier_p95, ref.outlier_p90))}
+      </div>
+      <div class="mut" style="margin-top:12px;font-size:.9rem">${esc(tc.finding)}</div>
+      ${d.parts ? `<div style="margin-top:14px"><div class="mut" style="font-size:.78rem;margin-bottom:4px">How the face differs from its surroundings, per measure (0 = the same, beyond ±2 = unusual)</div>${Object.entries(d.parts).map(([k, v]) => bar(k, v)).join("")}</div>` : ""}
+      <div class="mut" style="margin-top:12px;font-size:.78rem">Compares the image only with itself, after removing the effect of how detailed each patch is. Context only: it does not change the verdict (weak alone, and blind to fully AI-generated images). The heat map is under the image. <a href="/tools/consistency">How it works →</a></div></div>`; })() : "";
   const evidence = rep.signals.map(s => {
     const [t, sub, slug] = nameOf(s.name), off = s.reliable === false, p = s.score_fake, tn = tone(p);
     const ranges = s.time_ranges?.length ? `<div style="margin-top:6px" class="num">Suspicious at ${s.time_ranges.map(([x, y]) => `${fmt(x)}–${fmt(y)}`).join(", ")}</div>` : "";
@@ -380,7 +405,7 @@ function renderResult(rep, name) {
       <div class="meter">${off ? "" : `<i style="width:${Math.round(p * 100)}%;background:${TONECOL[tn]}"></i>`}</div>
       <div class="badge ${off ? "off" : tn}">${off ? "Not used" : TONELBL[tn]}</div>
       <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg></summary>
-      <div class="body">${esc(s.finding)}${off ? `<div style="margin-top:6px">Excluded from the verdict because it isn't reliable for this file.</div>` : `<div class="num" style="margin-top:6px">Fake score ${p.toFixed(2)}</div>`}${ranges}${slug ? `<div style="margin-top:8px"><a href="/tools/${slug}">How this detector works →</a></div>` : ""}</div></details>`;
+      <div class="body">${esc(s.finding)}${off ? `<div style="margin-top:6px"><b>Why not used:</b> ${esc(skipWhy(s.name))}</div>` : `<div class="num" style="margin-top:6px">Fake score ${p.toFixed(2)}</div>`}${ranges}${slug ? `<div style="margin-top:8px"><a href="/tools/${slug}">How this detector works →</a></div>` : ""}</div></details>`;
   }).join("");
 
   const f = a?.file || {}, pv = rep.provenance || {};
@@ -429,7 +454,7 @@ function renderResult(rep, name) {
   <div class="dgrid a fade">
     <div class="panel"><h2>${kind === "video" ? "Video" : kind === "audio" ? "Audio" : "Image"}</h2>${toggle}
       <div class="viewer" id="viewer">${media}</div>
-      <div class="legend" id="legend" hidden><span>authentic</span><i></i><span>suspicious</span></div></div>
+      <div class="legend" id="legend" hidden><span>authentic</span><i></i><span>suspicious</span></div>${tcFactor}</div>
     <div class="panel score">
       <h2 style="align-self:flex-start;margin:0">Authenticity</h2>
       <div class="ring"><svg viewBox="0 0 120 120"><circle class="trk" cx="60" cy="60" r="52"/><circle class="val" id="rv" cx="60" cy="60" r="52" stroke="${ringCol}" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
@@ -441,6 +466,7 @@ function renderResult(rep, name) {
   </div>
 
   ${lipsync}
+  ${tcPanel}
 
   <div class="dgrid b fade">
     <div class="panel"><h2>Forensic evidence</h2>${evidence}</div>
@@ -469,8 +495,8 @@ function renderResult(rep, name) {
 
   document.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
     document.querySelectorAll(".seg button").forEach(x => x.classList.toggle("on", x === b));
-    const heat = b.dataset.v === "heat";
-    $("viewer").innerHTML = heat ? `<img src="${heats[0].heatmap}" alt="Heatmap">` : media;
+    const heat = b.dataset.v.startsWith("h") && b.dataset.v !== "orig";
+    $("viewer").innerHTML = heat ? `<img src="${heats[+b.dataset.v.slice(1)].heatmap}" alt="Heatmap">` : media;
     $("legend").hidden = !heat;
   });
   $("dl").onclick = () => {
